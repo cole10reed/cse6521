@@ -1,0 +1,9 @@
+To access the SpaceNet and Urban 3-D Datasets:
+    Instructions available at https://spacenet.ai/datasets/
+
+    1. Install AWS CLI
+    2. Run following commands to copy the dataset into your current directory:
+        Urban-3D:
+            aws s3 cp s3://spacenet-dataset/Hosted-Datasets/Urban_3D_Challenge ./ --recursive
+        Spacenet:
+            aws s3 cp s3://spacenet-dataset/spacenet/[insert spacenet dataset name here] ./ --recursive
