@@ -3,6 +3,9 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+from torchmetrics import JaccardIndex
+from sample_calc import get_truth_image
+from pycocotools import mask as mask_utils
 
 def show_anns(anns):
     if len(anns) == 0:
@@ -14,6 +17,7 @@ def show_anns(anns):
     img = np.ones((sorted_anns[0]['segmentation'].shape[0], sorted_anns[0]['segmentation'].shape[1], 4))
     img[:,:,3] = 0
     for ann in sorted_anns:
+        print(ann)
         m = ann['segmentation']
         color_mask = np.concatenate([np.random.random(3), [0.35]])
         img[m] = color_mask
@@ -37,14 +41,33 @@ print('Max:', image.max())
 
 
 sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=64)
+mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=32)
 masks = mask_generator.generate(image)
 
 print(len(masks))
 print(masks[0].keys())
 
+
+truth_image = get_truth_image('Datasets/Urban_3D_Challenge/01-Provisional_Train/GT/JAX_Tile_004_GTI.tif', 2048, 2048)
+print('Truth image shape:', truth_image.shape)
+
+### BEGIN ACCURACY CALCULATION ###
+
+jaccard = JaccardIndex(task='binary')
+
+for i in range(truth_image.max()+1):
+    building_mask = np.where(truth_image==i, 1, 0)
+    building_mask = torch.from_numpy(building_mask)
+    for ann in masks:
+        print('Shape of annotation: ', ann['segmentation'].shape)
+        print('Shape of building mask: ', building_mask.shape)
+        segment = torch.from_numpy(ann['segmentation'])
+        print(jaccard(building_mask, segment))
+
+
 plt.figure(figsize=(20,20))
 plt.imshow(image)
 show_anns(masks)
 plt.axis('off')
+plt.savefig(fname='test_128pps')
 plt.show()

@@ -12,6 +12,6 @@ from PIL.TiffTags import TAGS
 
 with Image.open('Datasets/Urban_3D_Challenge/01-Provisional_Train/GT/JAX_Tile_004_GTL.tif') as img:
     meta_dict = {TAGS[key] : img.tag[key] for key in img.tag.keys()}
-    print(len(list(img.getdata())))
+    print(list(img.getdata()))
 
 print(meta_dict.keys())
