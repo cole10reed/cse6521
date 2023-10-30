@@ -18,9 +18,9 @@ def IoU(GT, Predictions):
     cv2.imshow(union, "OR")
 
     intersection_non_mask_area = cv2.countNonZero(intersection)
-    intersection_area = intersection.size() - intersection_non_mask_area # total minus non mask area
+    intersection_area = intersection.size - intersection_non_mask_area # total minus non mask area
 
     union_non_mask_area = union.countNonero(union)
-    union_area = union.size() - union_non_mask_area
+    union_area = union.size - union_non_mask_area
 
     return intersection_area/union_area
