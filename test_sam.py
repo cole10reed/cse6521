@@ -4,7 +4,7 @@ import numpy as np
 # import matplotlib.pyplot as plt
 import torch
 from torchmetrics import JaccardIndex
-from sample_calc import get_truth_image
+import utils_6521 as utils
 from pycocotools import mask as mask_utils
 
 '''
@@ -30,18 +30,17 @@ model_type = 'vit_h'
 
 device = 'cuda'
 
+input_images = utils.get_input_files('Datasets/Urban_3D_Challenge/02-Provisional_Test/')
+truth_images = utils.get_truth_files('Datasets/Urban_3D_Challenge/02-Provisional_Test/')
+
+
+for i in input_images:
+    print(str(i))
+
+
+print(type(input_images))
+
 image = cv2.imread('Datasets/Urban_3D_Challenge/01-Provisional_Train/Inputs/JAX_Tile_004_RGB.tif')
-
-print('Shape:', image.shape)
-print('Type:', image.dtype)
-print('Max:', image.max())
-
-#plt.figure(figsize=(20,20))
-#plt.imshow(image)
-#plt.axis('off')
-#plt.show()
-
-
 
 sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
 sam.to(device=device)
@@ -53,7 +52,7 @@ print(len(masks))
 print(masks[0].keys())
 
 
-truth_image = get_truth_image('Datasets/Urban_3D_Challenge/01-Provisional_Train/GT/JAX_Tile_004_GTI.tif', 2048, 2048)
+truth_image = utils.get_truth_image('Datasets/Urban_3D_Challenge/01-Provisional_Train/GT/JAX_Tile_004_GTI.tif', 2048, 2048)
 print('Truth image shape:', truth_image.shape)
 
 ### BEGIN ACCURACY CALCULATION ###
