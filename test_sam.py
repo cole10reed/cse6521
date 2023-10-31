@@ -6,6 +6,7 @@ import torch
 from torchmetrics import JaccardIndex
 import utils_6521 as utils
 from pycocotools import mask as mask_utils
+from multiprocessing import Pool
 
 '''
 def show_anns(anns):
@@ -43,7 +44,7 @@ print(type(input_images))
 image = cv2.imread('Datasets/Urban_3D_Challenge/01-Provisional_Train/Inputs/JAX_Tile_004_RGB.tif')
 
 sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
-sam.to(device=device)
+# sam.to(device=device)
 
 mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=32)
 masks = mask_generator.generate(image)
@@ -61,16 +62,32 @@ jaccard = JaccardIndex(task='binary')
 
 num_buildings = truth_image.max()
 true_pos = list()
+
+masks = sorted(masks, key=(lambda x: x['bbox']))
+input_masks = [torch.from_numpy(x['segmentation']) for x in masks]
+# truth_masks = [torch.from_numpy(np.where(truth_image==i, 1, 0)) for i in range(num_buildings+1)]
+
 for i in range(num_buildings + 1):
     building_mask = np.where(truth_image==i, 1, 0)
-    building_mask = torch.from_numpy(building_mask)
+    building_mask_tensor = torch.from_numpy(building_mask)
+    arr = np.nonzero(building_mask)
+    print('First el = ', arr[0][0], arr[1][0])
+    print('Last el = ', arr[0][-1], arr[1][-1])
+
     for j in range(len(masks)):
-        print('Shape of annotation: ', masks[j]['segmentation'].shape)
-        print('Shape of building mask: ', building_mask.shape)
-        segment = torch.from_numpy(masks[j]['segmentation'])
-        res = jaccard(building_mask, segment)
+        # print('Shape of annotation: ', masks[j]['segmentation'].shape)
+        # print('Shape of building mask: ', building_mask.shape)
+        x,y,w,h = masks[j]['bbox']
+        if ((x > arr[0][-1]) and (y > arr[1][-1])): # First point of mask occurs after last point of building, no further masks will intersect.
+            break
+        if ((x + w < arr[0][0]) and (y + h < arr[1][0])): # Last point of mask occurs before first point of building, keep looking but skip this mask.
+            continue
+        print(i, j)
+        segment = input_masks[j]
+        res = jaccard(building_mask_tensor, segment)
         if (res >= 0.45):
             true_pos.append(i)
+            print('-------- FOUND MATCH --------')
             del(masks[j])
             break
 
