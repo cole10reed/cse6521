@@ -20,10 +20,16 @@ a1 = [(10, 20, 30, 20), (20, 10, 15, 10), (10, 15, 40, 50), (20, 5, 30, 30)]
 a2 = sorted(a1)
 
 print(a2)
-# for i in range(num_buildings + 1):
-#     building_mask = np.where(truth_image==i, 1, 0)
-#     building_mask_tensor = torch.from_numpy(building_mask)
-#     arr = np.nonzero(building_mask)
-#     print('First el = ', arr[0][0], arr[1][0])
-#     print('Last el = ', arr[0][-1], arr[1][-1])
+for i in range(num_buildings + 1):
+    building_mask = np.where(truth_image==i, 1, 0)
+    building_mask_tensor = torch.from_numpy(building_mask)
+    arr = np.nonzero(building_mask)
+    print('First el = ', arr[0][0], arr[1][0])
+    print('Last el = ', arr[0][-1], arr[1][-1])
+
+    bx1 = min(arr[0])
+    bx2 = max(arr[0])
+    by1 = min(arr[1])
+    by2 = max(arr[1])
+    print(bx1, bx2, by1, by2)
 

@@ -73,16 +73,44 @@ for i in range(num_buildings + 1):
     arr = np.nonzero(building_mask)
     print('First el = ', arr[0][0], arr[1][0])
     print('Last el = ', arr[0][-1], arr[1][-1])
+    
+    # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
+    # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
+    bx1 = min(arr[0])
+    bx2 = max(arr[0])
+    by1 = min(arr[1])
+    by2 = max(arr[1])
 
     for j in range(len(masks)):
         # print('Shape of annotation: ', masks[j]['segmentation'].shape)
         # print('Shape of building mask: ', building_mask.shape)
         x,y,w,h = masks[j]['bbox']
-        if ((x > arr[0][-1]) and (y > arr[1][-1])): # First point of mask occurs after last point of building, no further masks will intersect.
+        
+        '''
+        Old calculation (works, but takes ~35 min)
+        # if ((x > arr[0][-1]) and (y > arr[1][-1])): # First point of mask occurs after last point of building, no further masks will intersect.
+        #     break
+        # if ((x + w < arr[0][0]) and (y + h < arr[1][0])): # Last point of mask occurs before first point of building, keep looking but skip this mask.
+        #     continue
+        '''
+
+        '''
+        Current effort (broken, but fast!)
+        '''
+        if (x > bx2):   # Masks are past the building, no more possible intersections.
+            print('BREAKING')
+            print('mask = ',x,y,x+w,y+h)
+            print('bldg = ',bx1,by1,bx2,by2)
             break
-        if ((x + w < arr[0][0]) and (y + h < arr[1][0])): # Last point of mask occurs before first point of building, keep looking but skip this mask.
+        if (((y+h) < by1) or (y > by2) or ((x+w) < bx1)): # Mask lies outside building bbox, keep looking but skip this iteration. 
+            print('CONTINUING')
+            print('mask = ',x,y,x+w,y+h)
+            print('bldg = ',bx1,by1,bx2,by2)
             continue
+        
         print(i, j)
+        
+
         segment = input_masks[j]
         res = jaccard(building_mask_tensor, segment)
         if (res >= 0.45):
