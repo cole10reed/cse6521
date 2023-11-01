@@ -43,7 +43,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
 
     # print(type(input_images))
 
-    image = cv2.imread(dataset_loc + r'\01-Provisional_Train\Inputs\JAX_Tile_004_RGB.tif')
+    image = cv2.imread(dataset_loc + r'\01-Provisional_Train\Inputs\JAX_Tile_052_RGB.tif')
 
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
     # sam.to(device=device)
@@ -51,10 +51,10 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
     mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=32)
     masks = mask_generator.generate(image)
 
-    print(len(masks))
-    print(masks[0].keys())
+    # print(len(masks))
+    # print(masks[0].keys())
 
-    truth_image = utils.get_truth_image(dataset_loc + r'\01-Provisional_Train\GT\JAX_Tile_004_GTI.tif', 2048, 2048)
+    truth_image = utils.get_truth_image(dataset_loc + r'\01-Provisional_Train\GT\JAX_Tile_052_GTI.tif', 2048, 2048)
     # print('Truth image shape:', truth_image.shape)
 
     ###show images so i can see what correct answers should roughly be
@@ -81,6 +81,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
     nbreaks = 0
     ncontinue = 0
 
+    timeforloopstart = time.time()
     for i in range(num_buildings + 1):
         building_mask = np.where(truth_image==i, 1, 0)
         building_mask_tensor = torch.from_numpy(building_mask)
@@ -140,30 +141,34 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
             res = jaccard(building_mask_tensor, segment)
             if (res >= 0.45):
                 true_pos.append(i)
-                print('-------- FOUND MATCH --------')
-                print("bx1: ", bx1, " bx2: ", bx2, " by1: ", by1, " by2: ", by2)
-                print(" x1: ", x, "  x2: ", x+w, "  y1: ", y, "  y2: ", y+h)
-                print(segment[x:x+w+1,y:y+h+1])
+                # print('-------- FOUND MATCH --------')
+                # print("bx1: ", bx1, " bx2: ", bx2, " by1: ", by1, " by2: ", by2)
+                # print(" x1: ", x, "  x2: ", x+w, "  y1: ", y, "  y2: ", y+h)
+                # print(segment[x:x+w+1,y:y+h+1])
                 del(masks[j])
                 # del(input_masks[j])
                 break
 
     end = time.time()
     elapsed_time = end-start
+    elapsed_for_loop_time = end - timeforloopstart
+    print('elapsed for loop: ', elapsed_for_loop_time)
     print('Number of true positives:', len(true_pos))
     print('Number of false negatives:', num_buildings-len(true_pos))
     print('Execution time:', elapsed_time, 'seconds')
     print('Number of breaks', nbreaks)
     print('Number of continues', ncontinue)
 
-    
+    '''
     plt.figure(figsize=(20,20))
     plt.imshow(image)
     show_anns(masks)
     plt.axis('off')
     plt.savefig(fname='test_128pps')
     plt.show()
+    '''
     
-
+'''
 if __name__=='__main__':
     exe(dataset_loc='Datasets/Urban_3D_Challenge')
+'''
