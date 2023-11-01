@@ -43,7 +43,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
 
     # print(type(input_images))
 
-    image = cv2.imread(dataset_loc + r'\01-Provisional_Train\Inputs\JAX_Tile_052_RGB.tif')
+    image = cv2.imread(dataset_loc + r'\01-Provisional_Train\Inputs\JAX_Tile_004_RGB.tif')
 
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
     # sam.to(device=device)
@@ -54,7 +54,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
     # print(len(masks))
     # print(masks[0].keys())
 
-    truth_image = utils.get_truth_image(dataset_loc + r'\01-Provisional_Train\GT\JAX_Tile_052_GTI.tif', 2048, 2048)
+    truth_image = utils.get_truth_image(dataset_loc + r'\01-Provisional_Train\GT\JAX_Tile_004_GTI.tif', 2048, 2048)
     # print('Truth image shape:', truth_image.shape)
 
     ###show images so i can see what correct answers should roughly be
@@ -156,8 +156,8 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
     print('Number of true positives:', len(true_pos))
     print('Number of false negatives:', num_buildings-len(true_pos))
     print('Execution time:', elapsed_time, 'seconds')
-    print('Number of breaks', nbreaks)
-    print('Number of continues', ncontinue)
+    # print('Number of breaks', nbreaks)
+    # print('Number of continues', ncontinue)
 
     '''
     plt.figure(figsize=(20,20))
