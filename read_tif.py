@@ -1,6 +1,7 @@
 import utils_6521 as utils
 import numpy as np
 import torch
+from torchmetrics import JaccardIndex
 # (220, 140, 0) is the RGB value of a building pixel in GTC files.
 # 6 represents a building pixel in GTL files.
 # (224, 224, 224) is a background pixel in GTC files.
@@ -19,6 +20,13 @@ a1 = [(10, 20, 30, 20), (20, 10, 15, 10), (10, 15, 40, 50), (20, 5, 30, 30)]
 
 a2 = sorted(a1)
 
+jaccard = JaccardIndex(task='binary')
+
+true = np.ones(shape=(2048,2048))
+true = torch.from_numpy(true)
+false = np.zeros(shape=(2048,2048))
+false = torch.from_numpy(false)
+
 print(a2)
 for i in range(num_buildings + 1):
     building_mask = np.where(truth_image==i, 1, 0)
@@ -32,4 +40,8 @@ for i in range(num_buildings + 1):
     by1 = min(arr[1])
     by2 = max(arr[1])
     print(bx1, bx2, by1, by2)
+    print('true =', jaccard(building_mask_tensor, true))
+    print('false =', jaccard(building_mask_tensor, false))
+    print('self =', jaccard(building_mask_tensor, building_mask_tensor))
+    # print(building_mask[(bx1-1):(bx2+2), (by1-1):(by2+2)])
 
