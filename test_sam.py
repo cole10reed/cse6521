@@ -1,3 +1,5 @@
+import sys
+sys.path.append('C:/Users/Micha/Documents/CSE 6521/cse6521/Segment-Anything/')
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 import cv2
 import numpy as np
@@ -80,7 +82,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
 
     ### BEGIN ACCURACY CALCULATION ###
 
-        jaccard = JaccardIndex(task='binary')
+        jaccard = JaccardIndex(task='binary', num_classes = 2)
         print(input_list[k])
         print(truth_list[k])
         print('----------------------')
@@ -218,14 +220,14 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
     print('Total results on ', len(input_list) ,' images with model type ', model_type, '\n')
     print('Total number of true positives: ', total_stats['n_true_pos'], '\n')
     print('Total number of false negatives: ', total_stats['n_false_neg'],  '\n')
-    print('Total execution time in seconds: ' + total_stats['total_runtime'])
+    print('Total execution time in seconds: ', total_stats['total_runtime'])
 
     fname = 'results_' + model_type + '_' + image_folder + '.txt'
     with open(fname, mode = 'wt') as f:
         f.write('Total results on ', len(input_list) ,' images with model type ', model_type, '\n')
         f.write('Total number of true positives: ', total_stats['n_true_pos'], '\n')
         f.write('Total number of false negatives: ', total_stats['n_false_neg'],  '\n')
-        f.write('Total execution time in seconds: ' + total_stats['total_runtime'])
+        f.write('Total execution time in seconds: ', total_stats['total_runtime'])
 
 
 
