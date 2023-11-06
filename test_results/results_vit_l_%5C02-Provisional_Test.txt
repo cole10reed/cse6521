@@ -1,0 +1,4 @@
+Total results on 62 images with model type vit_l
+Total number of true positives: 6118
+Total number of false negatives: 24064
+Total execution time in seconds: 2031.0879418849945

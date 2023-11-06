@@ -1,0 +1,4 @@
+Total results on 62 images with model type vit_b
+Total number of true positives: 3001
+Total number of false negatives: 27181
+Total execution time in seconds: 1501.3772974014282

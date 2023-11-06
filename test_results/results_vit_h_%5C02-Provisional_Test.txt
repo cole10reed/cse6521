@@ -1,0 +1,4 @@
+Total results on 62 images with model type vit_h
+Total number of true positives: 6584
+Total number of false negatives: 23598
+Total execution time in seconds: 1367.7223529815674
