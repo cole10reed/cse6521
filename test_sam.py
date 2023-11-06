@@ -1,5 +1,5 @@
 import sys
-sys.path.append('C:/Users/Micha/Documents/CSE 6521/cse6521/Segment-Anything/')
+sys.path.append('/users/PAS2622/mdsil11/cse6521/Segment-Anything/')
 from segment_anything import SamAutomaticMaskGenerator, sam_model_registry
 import cv2
 import numpy as np
@@ -29,15 +29,17 @@ def show_anns(anns):
     ax.imshow(img)
 
 
-def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', device = 'cuda', model_type = 'vit_h', dataset_loc = r"C:\Users\Micha\Documents\CSE 6521\Datasets", image_folder = r'\02-Provisional_Test'):
+def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', gpu_device = 'cuda', model_type = 'vit_h', dataset_loc = '/Datasets/02-Provisional_Test/'):
 
     start = time.time()
 
     print('--------------Testing Sam Model ', model_type, ' on datasets located at ', dataset_loc)
 
+    print('Fetching Datasets from location ', dataset_loc)
 
-    input_images = utils.get_input_files(dataset_loc + image_folder)
-    truth_images = utils.get_truth_files(dataset_loc + image_folder)
+
+    input_images = utils.get_input_files(dataset_loc)
+    truth_images = utils.get_truth_files(dataset_loc)
 
     input_list = list()
     truth_list = list()
@@ -53,7 +55,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
 
     # image = cv2.imread(dataset_loc + r'\01-Provisional_Train\Inputs\JAX_Tile_004_RGB.tif')
 
-    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = gpu_device)
     # sam.to(device=device)
 
     mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=32)
@@ -82,7 +84,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
 
     ### BEGIN ACCURACY CALCULATION ###
 
-        jaccard = JaccardIndex(task='binary', num_classes = 2)
+        jaccard = JaccardIndex(task='binary', num_classes = 2).to(device = gpu_device)
         print(input_list[k])
         print(truth_list[k])
         print('----------------------')
@@ -90,6 +92,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
         input_image = cv2.imread(input_list[k])
         truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
         masks = mask_generator.generate(input_image)
+        print(' *********** Generated Masks *************** ' )
 
         num_buildings = truth_image.max()
         true_pos = list()
@@ -107,9 +110,10 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
         image_results_dic[k] = {'n_true_pos': 0, 'n_false_neg': 0, 'ImgExecutionTime': 0, 'avg_jac': 0}
 
         timeforloopstart = time.time()
+        print('Beggining loop over buildings for images')
         for i in range(num_buildings + 1):
             building_mask = np.where(truth_image==i, 1, 0)
-            building_mask_tensor = torch.from_numpy(building_mask)
+            building_mask_tensor = torch.from_numpy(building_mask).cuda()
             arr = np.nonzero(building_mask)
 
     
@@ -176,7 +180,7 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
                     continue
                 # print(i, j)
                 
-                segment = torch.from_numpy(mask['segmentation'])
+                segment = torch.from_numpy(mask['segmentation']).cuda()
                 # segment = input_masks[j]
                 res = jaccard(building_mask_tensor, segment)
                 avg_jac = image_results_dic[k]['avg_jac']
@@ -222,12 +226,12 @@ def exe(sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth', dev
     print('Total number of false negatives: ', total_stats['n_false_neg'],  '\n')
     print('Total execution time in seconds: ', total_stats['total_runtime'])
 
-    fname = 'results_' + model_type + '_' + image_folder + '.txt'
+    fname = 'results_' + model_type + '_' + dataset_loc + '.txt'
     with open(fname, mode = 'wt') as f:
-        f.write('Total results on ', len(input_list) ,' images with model type ', model_type, '\n')
-        f.write('Total number of true positives: ', total_stats['n_true_pos'], '\n')
-        f.write('Total number of false negatives: ', total_stats['n_false_neg'],  '\n')
-        f.write('Total execution time in seconds: ', total_stats['total_runtime'])
+        f.write('Total results on ' + str(len(input_list)) + ' images with model type ' + model_type + '\n')
+        f.write('Total number of true positives: ' + str(total_stats['n_true_pos']) + '\n')
+        f.write('Total number of false negatives: ' + str(total_stats['n_false_neg']) +  '\n')
+        f.write('Total execution time in seconds: ' + str(total_stats['total_runtime']))
 
 
 
