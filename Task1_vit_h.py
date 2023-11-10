@@ -29,6 +29,7 @@ for i in truth_images:
 
 total_true_positives = 0
 total_false_negatives = 0
+sum_iou = 0
 
 for k in range(len(input_list)):
     print(input_list[k])
@@ -58,6 +59,7 @@ for k in range(len(input_list)):
             result = jaccard(building_mask, segment)
             if (result >= 0.45):  # If the IoU result is greater than 45%, consider it a true positive.
                 true_pos.append(i)
+                sum_iou = sum_iou + result  # Used to keep track of true positive IoU values to calculate an average at the end.
                 del(masks[j])
                 break
 
@@ -70,3 +72,4 @@ print('XXXXXXXXXXXXXXXXX')
 print('Final results:')
 print('True Positives:', total_true_positives)
 print('False Negatives:', total_false_negatives)
+print('Average IoU of TP:', float(sum_iou / total_true_positives) )
