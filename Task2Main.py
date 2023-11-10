@@ -19,9 +19,12 @@ from segment_anything.utils.amg import (
     uncrop_points,
 )
 import torch
+from torchmetrics import JaccardIndex
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import time
+import utils_6521 as utils
 
 
 def show_anns(anns):
@@ -87,6 +90,70 @@ def model_train(model: SamAutomaticMaskGenerator, image: np.ndarray):
     return curr_anns
 
     
+def grad_descent(masks, truth_image, loss_func, optimizer):
+    start = time.time()
+
+    num_buildings = truth_image.max()
+    true_pos = list()
+
+    masks = sorted(masks, key=(lambda x: x['bbox']))
+    
+    jaccard = JaccardIndex(task='binary')
+
+    nbreaks = 0
+    ncontinue = 0
+
+    timeforloopstart = time.time()
+    for i in range(num_buildings + 1):
+        building_mask = np.where(truth_image==i, 1, 0)
+        building_mask_tensor = torch.from_numpy(building_mask)
+        arr = np.nonzero(building_mask)
+        
+        # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
+        # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
+        by1 = min(arr[0])
+        by2 = max(arr[0])
+        bx1 = min(arr[1])
+        bx2 = max(arr[1])
+
+        for j in range(len(masks)):
+            x,y,h,w = masks[j]['bbox']
+            
+            if (x > bx2):   # Masks are past the building, no more possible intersections.
+                nbreaks += 1
+                break
+            
+            if (y+h < by1):
+                ncontinue += 1
+                continue
+            if (y > by2):
+                ncontinue += 1
+                continue
+            if (x+w < bx1):
+                ncontinue += 1
+                continue
+            
+            segment = torch.from_numpy(masks[j]['segmentation'])
+            res = jaccard(building_mask_tensor, segment)
+
+            ### Here we've found a true positive, let's calculate the loss using loss_func and optimizer ###
+            if (res >= 0.45):
+                true_pos.append(i)
+                del(masks[j])
+                break
+
+    end = time.time()
+    elapsed_time = end-start
+    elapsed_for_loop_time = end - timeforloopstart
+    print('elapsed for loop: ', elapsed_for_loop_time)
+    print('Number of true positives:', len(true_pos))
+    print('Number of false negatives:', num_buildings-len(true_pos))
+    print('Execution time:', elapsed_time, 'seconds')
+    # print('Number of breaks', nbreaks)
+    # print('Number of continues', ncontinue)
+
+
+
 def main(
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
          gpu_device = 'cuda',
@@ -103,8 +170,14 @@ def main(
 
     image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_004_RGB.tif')
     print(image)
+    truth_image = utils.get_truth_image(dataset_loc + r'\01-Provisional_Train\GT\JAX_Tile_004_GTI.tif', 2048, 2048)
+    
 
     masks = model_train(model_in_training, image)
+
+    ### Here we calculate loss building-by-building and call optimizer ###
+    grad_descent(masks=masks, truth_image=truth_image, loss_func=loss_func, optimizer=optimizer)
+
 
     plt.figure(figsize=(20,20))
     plt.imshow(image)
