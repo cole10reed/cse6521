@@ -21,14 +21,26 @@ from segment_anything.utils.amg import (
 import torch
 import numpy as np
 import cv2
-'''
-def train(
-        sam_model: sam_model_registry,
-         optimizer: torch.optim,
-          loss_func = torch.nn.MSELoss(),
-           dataset_loc = '/Datasets/Urban_3D_Challenge/01-Provisional_Train'
-           ):
-    '''
+import matplotlib.pyplot as plt
+
+
+def show_anns(anns):
+    if len(anns) == 0:
+        return
+    sorted_anns = sorted(anns, key=(lambda x: x['area']), reverse=True)
+    ax = plt.gca()
+    ax.set_autoscale_on(False)
+
+    img = np.ones((sorted_anns[0]['segmentation'].shape[0], sorted_anns[0]['segmentation'].shape[1], 4))
+    img[:,:,3] = 0
+    for ann in sorted_anns:
+        # print(ann)
+        m = ann['segmentation']
+        color_mask = np.concatenate([np.random.random(3), [0.35]])
+        img[m] = color_mask
+    ax.imshow(img)
+
+
 
 def model_train(model: SamAutomaticMaskGenerator, image: np.ndarray):
     data = MaskData()
@@ -54,8 +66,27 @@ def model_train(model: SamAutomaticMaskGenerator, image: np.ndarray):
     model.predictor.reset_image()
 
     data.to_numpy()
-    return data
 
+    data["segmentations"] = [rle_to_mask(rle) for rle in data["rles"]]
+
+    curr_anns = []
+    for idx in range(len(data["segmentations"])):
+        ann = {
+            "segmentation": data["segmentations"][idx],
+            "area": area_from_rle(data["rles"][idx]),
+            "bbox": box_xyxy_to_xywh(data["boxes"][idx]).tolist(),
+            "predicted_iou": data["iou_preds"][idx].item(),
+            "point_coords": [data["points"][idx].tolist()],
+            "stability_score": data["stability_score"][idx].item(),
+            # "crop_box": box_xyxy_to_xywh(data["crop_boxes"][idx]).tolist(),
+        }
+        curr_anns.append(ann)
+
+    # print(data.items())
+
+    return curr_anns
+
+    
 def main(
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
          gpu_device = 'cuda',
@@ -73,7 +104,14 @@ def main(
     image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_004_RGB.tif')
     print(image)
 
-    model_train(model_in_training, image)
+    masks = model_train(model_in_training, image)
+
+    plt.figure(figsize=(20,20))
+    plt.imshow(image)
+    show_anns(masks)
+    plt.axis('off')
+    plt.savefig(fname='test_task2')
+    plt.show()
 
     
 
