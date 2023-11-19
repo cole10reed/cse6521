@@ -102,12 +102,16 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
 
     nbreaks = 0
     ncontinue = 0
+    sum_iou = 0
 
     timeforloopstart = time.time()
     for i in range(num_buildings + 1):
+        if (i == 0):
+            continue
         building_mask = np.where(truth_image==i, 1, 0)
         building_mask_tensor = torch.from_numpy(building_mask)
         arr = np.nonzero(building_mask)
+        print(f'Building {i}')
         
         # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
         # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
@@ -139,6 +143,17 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
             ### Here we've found a true positive, let's calculate the loss using loss_func and optimizer ###
             if (res >= 0.45):
                 true_pos.append(i)
+                sum_iou = sum_iou + res
+
+                building_mask_tensor_float = building_mask_tensor.float()
+                segment = segment.float()
+
+                loss = loss_func(building_mask_tensor_float, segment)
+                loss.requires_grad = True
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
                 del(masks[j])
                 break
 
@@ -151,6 +166,7 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
     print('Execution time:', elapsed_time, 'seconds')
     # print('Number of breaks', nbreaks)
     # print('Number of continues', ncontinue)
+    return sum_iou, len(true_pos)
 
 
 
@@ -168,15 +184,16 @@ def main(
     optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
     loss_func = torch.nn.MSELoss()
 
-    image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_004_RGB.tif')
-    print(image)
-    truth_image = utils.get_truth_image(dataset_loc + r'\01-Provisional_Train\GT\JAX_Tile_004_GTI.tif', 2048, 2048)
+    image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
+    # print(image)
+    truth_image = utils.get_truth_image(dataset_loc + r'GT/JAX_Tile_052_GTI.tif', 2048, 2048)
     
+    for i in range(5):
+        masks = model_train(model_in_training, image)
 
-    masks = model_train(model_in_training, image)
-
-    ### Here we calculate loss building-by-building and call optimizer ###
-    grad_descent(masks=masks, truth_image=truth_image, loss_func=loss_func, optimizer=optimizer)
+        ### Here we calculate loss building-by-building and call optimizer ###
+        sum_iou, num_true_positive = grad_descent(masks=masks, truth_image=truth_image, loss_func=loss_func, optimizer=optimizer)
+        print(f'Iteration  {i}: {(sum_iou / num_true_positive)}')
 
 
     plt.figure(figsize=(20,20))
