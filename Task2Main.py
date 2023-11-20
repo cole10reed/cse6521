@@ -24,6 +24,7 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 import time
+from typing import Optional, Tuple, List
 import utils_6521 as utils
 
 
@@ -44,11 +45,109 @@ def show_anns(anns):
     ax.imshow(img)
 
 
+def predict_torch_grad(predictor,
+        point_coords: Optional[torch.Tensor],
+        point_labels: Optional[torch.Tensor],
+        boxes: Optional[torch.Tensor] = None,
+        mask_input: Optional[torch.Tensor] = None,
+        multimask_output: bool = True,
+        return_logits: bool = False,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+
+    if not predictor.is_image_set:
+        raise RuntimeError("An image must be set with .set_image(...) before mask prediction.")
+
+    if point_coords is not None:
+        points = (point_coords, point_labels)
+    else:
+        points = None
+
+    # Embed prompts
+    sparse_embeddings, dense_embeddings = predictor.model.prompt_encoder(
+        points=points,
+        boxes=boxes,
+        masks=mask_input,
+    )
+
+    # Predict masks
+    low_res_masks, iou_predictions = predictor.model.mask_decoder(
+        image_embeddings=predictor.features,
+        image_pe=predictor.model.prompt_encoder.get_dense_pe(),
+        sparse_prompt_embeddings=sparse_embeddings,
+        dense_prompt_embeddings=dense_embeddings,
+        multimask_output=multimask_output,
+    )
+
+    # Upscale the masks to the original image resolution
+    masks = predictor.model.postprocess_masks(low_res_masks, predictor.input_size, predictor.original_size)
+
+    if not return_logits:
+        masks = masks > predictor.model.mask_threshold
+
+    return masks, iou_predictions, low_res_masks
+
+
+def process_batch_grad(
+        model,
+        points: np.ndarray,
+        im_size: Tuple[int, ...],
+        crop_box: List[int],
+        orig_size: Tuple[int, ...],
+    ) -> MaskData:
+    orig_h, orig_w = orig_size
+
+    transformed_points = model.predictor.transform.apply_coords(points, orig_size)
+    in_points = torch.as_tensor(transformed_points, device=model.predictor.device)
+    in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=in_points.device)
+    masks, iou_preds, _ = predict_torch_grad(
+        model.predictor,
+        in_points[:, None, :],
+        in_labels[:, None],
+        multimask_output=True,
+        return_logits=True,
+    )
+        
+    # Serialize predictions and store in MaskData
+    data = MaskData(
+        masks=masks.flatten(0, 1),
+        iou_preds=iou_preds.flatten(0, 1),
+        points=torch.as_tensor(points.repeat(masks.shape[1], axis=0)),
+    )
+    del masks
+
+    # Filter by predicted IoU
+    if model.pred_iou_thresh > 0.0:
+        keep_mask = data["iou_preds"] > model.pred_iou_thresh
+        data.filter(keep_mask)
+
+    # Calculate stability score
+    data["stability_score"] = calculate_stability_score(
+        data["masks"], model.predictor.model.mask_threshold, model.stability_score_offset
+    )
+    if model.stability_score_thresh > 0.0:
+        keep_mask = data["stability_score"] >= model.stability_score_thresh
+        data.filter(keep_mask)
+
+    # Threshold masks and calculate boxes
+    data["masks"] = data["masks"] > model.predictor.model.mask_threshold
+    data["boxes"] = batched_mask_to_box(data["masks"])
+
+    # Filter boxes that touch crop boundaries
+    keep_mask = ~is_box_near_crop_edge(data["boxes"], crop_box, [0, 0, orig_w, orig_h])
+    if not torch.all(keep_mask):
+        data.filter(keep_mask)
+
+    # Compress to RLE
+    data["masks"] = uncrop_masks(data["masks"], crop_box, orig_h, orig_w)
+    data["rles"] = mask_to_rle_pytorch(data["masks"])
+    del data["masks"]
+
+    return data
 
 def model_train(model: SamAutomaticMaskGenerator, image: np.ndarray):
     data = MaskData()
     orig_size = image.shape[:2]
-        
+    
     with torch.no_grad():
         im_h, im_w = orig_size
         crop_box = [0, 0, im_w, im_h]
@@ -63,7 +162,10 @@ def model_train(model: SamAutomaticMaskGenerator, image: np.ndarray):
     ### Here is where the mask generation starts ###
     ### We will need to train these parameters ###
     for (points,) in batch_iterator(model.points_per_batch, points_for_image):
-        batch_data = model._process_batch(points, orig_size, crop_box, orig_size)
+        # batch_data = model._process_batch(points, orig_size, crop_box, orig_size) # TODO: split this up. Calls predict_torch which has @torch.no_grad()
+        
+        batch_data = process_batch_grad(model, points, orig_size, crop_box, orig_size)
+        
         data.cat(batch_data)
         del batch_data
     model.predictor.reset_image()
@@ -149,7 +251,7 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
                 segment = segment.float()
 
                 loss = loss_func(building_mask_tensor_float, segment)
-                loss.requires_grad = True
+                # loss.requires_grad = True
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
