@@ -1,5 +1,7 @@
 import segment_anything as sa
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
+from torchvision.ops.boxes import batched_nms, box_area
+from segment_anything import automatic_mask_generator 
 from segment_anything.utils.amg import (
     MaskData,
     area_from_rle,
@@ -25,6 +27,10 @@ import cv2
 import matplotlib.pyplot as plt
 import time
 import utils_6521 as utils
+from segment_anything import SamPredictor
+from segment_anything.modeling import Sam
+from typing import Any, Dict, List, Optional, Tuple
+from amgWithGrad import AutomaticMaskGenerator_WithGrad
 
 
 def show_anns(anns):
@@ -45,28 +51,67 @@ def show_anns(anns):
 
 
 
-def model_train(model: SamAutomaticMaskGenerator, image: np.ndarray):
+
+def model_train(model: AutomaticMaskGenerator_WithGrad, image: np.ndarray):
     data = MaskData()
     orig_size = image.shape[:2]
+
+    crop_boxes, layer_idxs = generate_crop_boxes(
+    orig_size, n_layers = 0, overlap_ratio = 512 / 1500
+    )
+
+    for crop_box, layer_idx in zip(crop_boxes, layer_idxs):
+        crop_data = model._process_crop(image, crop_box, layer_idx, orig_size)
+        data.cat(crop_data)
         
-    with torch.no_grad():
-        im_h, im_w = orig_size
-        crop_box = [0, 0, im_w, im_h]
+    # with torch.no_grad():
+    #    im_h, im_w = orig_size
+    #    crop_box = [0, 0, im_w, im_h]
         ### Replicating the model._process_crop() function below
-        model.predictor.set_image(image)                            # generates the image embedding
+    #    model.predictor.set_image(image)                            # generates the image embedding
       
     
-    points_scale = np.array(orig_size)[None, ::-1]
-    points_for_image = model.point_grids[0] * points_scale      # generates the points to be used for prompting
-    
+    # points_scale = np.array(orig_size)[None, ::-1]
+    # points_for_image = model.point_grids[0] * points_scale      # generates the points to be used for prompting
+
+        # Remove duplicate masks between crops
+    if len(crop_boxes) > 1:
+        # Prefer masks from smaller crops
+        scores = 1 / box_area(data["crop_boxes"])
+        scores = scores.to(data["boxes"].device)
+        keep_by_nms = batched_nms(
+            data["boxes"].float(),
+            scores,
+            torch.zeros_like(data["boxes"][:, 0]),  # categories
+            iou_threshold=model.crop_nms_thresh,
+        )
+        data.filter(keep_by_nms)
+
+
+    # batch = (0,0,0,0)
+    # image, point_coords, point_labels, labels = batch
+    # image_embeddings = model.image_encoder(image)
+    # sparse_embeddings, dense_embeddings = model.prompt_encoder(
+    # points=(point_coords, point_labels),
+    # oxes=None,
+    # masks=None,
+    # )
+    # Something goes on here for batch sizes greater than 1
+    # low_res_masks, iou_predictions = model.mask_decoder(
+    # image_embeddings=image_embeddings,
+    # image_pe=model.prompt_encoder.get_dense_pe(),
+    # sparse_prompt_embeddings=sparse_embeddings,
+    # dense_prompt_embeddings=dense_embeddings,
+    # multimask_output=False,
+    # )
 
     ### Here is where the mask generation starts ###
     ### We will need to train these parameters ###
-    for (points,) in batch_iterator(model.points_per_batch, points_for_image):
-        batch_data = model._process_batch(points, orig_size, crop_box, orig_size)
-        data.cat(batch_data)
-        del batch_data
-    model.predictor.reset_image()
+    # for (points,) in batch_iterator(model.points_per_batch, points_for_image):
+    #     batch_data = model._process_batch(points, orig_size, crop_box, orig_size)
+    #    data.cat(batch_data)
+    #     del batch_data
+    # model.predictor.reset_image()
 
     data.to_numpy()
 
@@ -104,12 +149,25 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
     ncontinue = 0
     sum_iou = 0
 
+    image_size = 2048 * 2048
+    shape = (num_buildings, image_size)
+    print(shape)
+    all_truth_masks = np.zeros(shape)
+    print(all_truth_masks.shape)
+
+    all_pred_masks = np.zeros(shape)
+
     timeforloopstart = time.time()
     for i in range(num_buildings + 1):
         if (i == 0):
             continue
         building_mask = np.where(truth_image==i, 1, 0)
+        # building_mask_2 = building_mask.reshape(building_mask.shape[0], -1).T #flattens mask into 1D
+        building_mask_2 = building_mask.flatten()
+        all_truth_masks[i - 1] = building_mask_2 # append building mask to all truth mask
+        # np.concatenate(all_truth_mask, building_mask)
         building_mask_tensor = torch.from_numpy(building_mask)
+
         arr = np.nonzero(building_mask)
         print(f'Building {i}')
         
@@ -138,21 +196,23 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
                 continue
             
             segment = torch.from_numpy(masks[j]['segmentation'])
+            segment_num = masks[j]['segmentation'].flatten()
             res = jaccard(building_mask_tensor, segment)
 
             ### Here we've found a true positive, let's calculate the loss using loss_func and optimizer ###
             if (res >= 0.45):
                 true_pos.append(i)
                 sum_iou = sum_iou + res
+                all_pred_masks[i - 1] = segment_num
 
                 building_mask_tensor_float = building_mask_tensor.float()
                 segment = segment.float()
 
-                loss = loss_func(building_mask_tensor_float, segment)
-                loss.requires_grad = True
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                # loss = loss_func(building_mask_tensor_float, segment)
+                # loss.requires_grad = True
+                # optimizer.zero_grad()
+                # loss.backward()
+                # optimizer.step()
                 
                 del(masks[j])
                 break
@@ -166,7 +226,7 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
     print('Execution time:', elapsed_time, 'seconds')
     # print('Number of breaks', nbreaks)
     # print('Number of continues', ncontinue)
-    return sum_iou, len(true_pos)
+    return sum_iou, len(true_pos), all_truth_masks, all_pred_masks
 
 
 
@@ -176,13 +236,18 @@ def main(
           model_type = 'vit_h',
            dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
            ):
-    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
+    with torch.no_grad():
+        sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
 
     points_per_side = 32
 
     model_in_training = SamAutomaticMaskGenerator(sam, points_per_side=points_per_side) 
+    test=sam.state_dict()
     optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
-    loss_func = torch.nn.MSELoss()
+    params = []
+    for param in test:
+        params.append(param)
+    loss_func = torch.nn.MSELoss().cuda()
 
     image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
     # print(image)
@@ -192,8 +257,22 @@ def main(
         masks = model_train(model_in_training, image)
 
         ### Here we calculate loss building-by-building and call optimizer ###
-        sum_iou, num_true_positive = grad_descent(masks=masks, truth_image=truth_image, loss_func=loss_func, optimizer=optimizer)
+        sum_iou, num_true_positive, all_truth_masks, all_pred_masks = grad_descent(masks=masks, truth_image=truth_image, loss_func=loss_func, optimizer=optimizer)
+
+        jaccard = JaccardIndex(task='binary')
+
+        all_truth_masks_torch = torch.from_numpy(all_truth_masks)
+        all_pred_masks_torch = torch.from_numpy(all_pred_masks)
+        IoU_total = jaccard(all_truth_masks_torch, all_pred_masks_torch)
+        loss = loss_func(all_truth_masks_torch, all_pred_masks_torch)
+        loss.requires_grad = True
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
         print(f'Iteration  {i}: {(sum_iou / num_true_positive)}')
+        print('IoU Total: ***: ', IoU_total )
+        print('*** Loss : ***', loss)
+        print('************ WEIGHT TENSOR *************: ', test['mask_decoder.transformer.layers.0.self_attn.q_proj.weight'])
 
 
     plt.figure(figsize=(20,20))
