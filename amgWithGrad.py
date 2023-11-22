@@ -22,6 +22,7 @@ from segment_anything.utils.amg import (
 )
 import torch
 import numpy as np
+from copy import deepcopy
 from SamPredictorWithGrad import SamPredictor_WithGrad
 from segment_anything.modeling import Sam
 from typing import Any, Dict, List, Optional, Tuple
@@ -158,9 +159,25 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         masks, iou_preds, _ =  self.predictor.predict_torch(
             in_points[:, None, :],
             in_labels[:, None],
+            # multimask_output=False,
             multimask_output=True,
             return_logits=True,
          )
+
+        masks = masks.flatten(0, 1)
+        bin_masks = masks > 0 # Turn logit mask into binary mask of building (True = building_prediction, False = background_prediction)
+        unique = bin_masks[0][0].unique(return_counts=True)
+        
+        print('-------------')
+        print('Generated masks info:')
+        print('Shape: ', bin_masks.shape)
+        print('First mask: ', masks[0][0])
+        print('Unique vals:', unique)
+        print('Num unique vals:', len(unique[0]))
+        print('Max val:', torch.max(unique[0]))
+        print('Grad:', masks.grad_fn)
+        
+        """
                 # Serialize predictions and store in MaskData
         data = MaskData(
             masks=masks.flatten(0, 1),
@@ -168,7 +185,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
             points=torch.as_tensor(points.repeat(masks.shape[1], axis=0)),
         )
         del masks
-
+        """
         """
         ********************************
          *** Below is all the filtering and deduping done in the original generate_masks, process_crop and process_batch ***
@@ -182,7 +199,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
          Note - there is also a postprocessing step in SamPredictor.predict. We may need to check that as well in SamPRedictor.WithGrad.predict
          ***** Second note - I shared some pictures of debugging on teams that I think proves my above theory correct. grad_func is missing when we pass the tensor to the loss function
         """
-
+        """
         # Filter by predicted IoU
         if self.pred_iou_thresh > 0.0:
             keep_mask = data["iou_preds"] > self.pred_iou_thresh
@@ -262,7 +279,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
             curr_anns.append(ann)
 
         masks = curr_anns
-       
+        """
         print(' *** Grad Descent Begginging ***')
         num_buildings = truth_image.max()
 
@@ -287,6 +304,11 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         on one whole tensor with all the masks instead of one mask at a time, i think that would be more efficient,
         but I haven't finished that yet.
         '''
+        h, w = truth_image.shape
+        num_matches = 0
+        reordered_prediction_masks = torch.from_numpy(np.zeros(shape=(num_buildings, h, w)))
+        reordered_truth_masks = torch.from_numpy(np.zeros(shape=(num_buildings, h, w)))
+        # These two masks will be used to put building/prediction matches at the same row, in order to calculate loss all at once
 
         for i in range(num_buildings + 1):
           building_mask = np.where(truth_image==i, 1, 0)
@@ -305,43 +327,56 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
           bx2 = max(arr[1])
 
           for j in range(len(masks)):
-            x,y,h,w = masks[j]['bbox']
+            arr = np.nonzero(bin_masks[j])
+            my1 = min(arr[0])
+            my2 = max(arr[0])
+            mx1 = min(arr[1])
+            mx2 = max(arr[1])
+
             
-            if (x > bx2):   # Masks are past the building, no more possible intersections.
+            if (mx1 > bx2):   # Masks are past the building, no more possible intersections.
                 nbreaks += 1
                 break
             
-            if (y+h < by1):
+            if (my2 < by1):
                 ncontinue += 1
                 continue
-            if (y > by2):
+            if (my1 > by2):
                 ncontinue += 1
                 continue
-            if (x+w < bx1):
+            if (mx2 < bx1):
                 ncontinue += 1
                 continue
             
-            segment = torch.from_numpy(masks[j]['segmentation'])
+            segment = bin_masks[j] #torch.from_numpy(masks[j][0])
             # segment_num = masks[j]['segmentation'].flatten()
             res = jaccard(building_mask_tensor, segment)
 
             ### Here we've found a true positive, let's calculate the loss using loss_func and optimizer ###
             if (res >= 0.45):
                 true_pos.append(i)
+                reordered_prediction_masks[num_matches] = deepcopy(masks[j])
+                reordered_truth_masks[num_matches] = deepcopy(building_mask_tensor)
+                print('reordered Grad_fn:', reordered_prediction_masks.grad_fn)
+
+                num_matches = num_matches + 1
                 sum_iou = sum_iou + res
                 # all_pred_masks[i - 1] = segment_num
 
                 building_mask_tensor_float = building_mask_tensor.float()
-                segment = segment.float()
-
-                loss = loss_func(building_mask_tensor_float, segment)
-                loss_sum += loss
-                loss.requires_grad = True
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                # segment = segment.float()
+                segment = masks[j]
+                print('Segment grad:', segment.grad_fn)
+                with torch.autograd.set_detect_anomaly(True):
+                    loss = loss_func(building_mask_tensor_float, segment)
+                    
+                    # loss.requires_grad = True
+                    optimizer.zero_grad()
+                    loss.backward(retain_graph=True)
+                    loss_sum += loss.item()
+                    # optimizer.step()
                 
-                del(masks[j])
+                # del(masks[j])
                 break
 
           ##now, if bounding box is within batch coordinates, we add the mask
@@ -353,10 +388,10 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         # preds_to_torch = torch.from_numpy(preds_encoded)
         # IoU_total = jaccard(all_truth_masks_torch, all_pred_masks_torch)
         #loss = loss_func(all_truth_masks_torch.flatten(0,1), preds_to_torch)
-        loss.requires_grad = True
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # loss.requires_grad = True
+        # optimizer.zero_grad()
+        # loss.backward()
+        # optimizer.step()
         IoU_avg = sum_iou/len(true_pos)
 
         return IoU_avg, loss_sum, len(masks)

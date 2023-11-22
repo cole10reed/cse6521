@@ -1,3 +1,4 @@
 Datasets/*
 Segment-Anything/checkpoints/*
 read_tif.py
+tuned_models/*

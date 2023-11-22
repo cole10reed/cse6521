@@ -266,7 +266,7 @@ def main(
 
 
     # After fine tuning, test and see if new models have any changes to parameters
-    sam_tuned = sam = sam_model_registry[model_type](checkpoint='tuned_models/model_4.pth')#.to(device = gpu_device)
+    sam_tuned = sam_model_registry[model_type](checkpoint='tuned_models/model_4.pth')#.to(device = gpu_device)
 
     #store params
     paramdic_base = {}
@@ -284,7 +284,7 @@ def main(
     weight_diff = {}
     for (param_name, param) in paramdic_base.items():
         if not paramdic_tuned[param_name].equal(param): # tensor.equal returns true if tensor is exactly the same (values and all other elements of tensor)
-            weights_udpated = True
+            weights_updated = True
             weight_diff[param_name] = paramdic_tuned[param_name].eq(param) # this goes element by element and returns a tensor of true and falses corresponding to which exact elements have changed (i.e are different)
     
     if not weights_updated: # not one change in parameter detected
