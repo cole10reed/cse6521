@@ -260,7 +260,7 @@ def main(
     optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
     loss_func = torch.nn.MSELoss()
 
-   # model_save_dic = fine_tune(sam, model_in_training, image, truth_image, optimizer, loss_func, 1)
+    model_dic = fine_tune(sam, model_in_training, image, truth_image, optimizer, loss_func, 1)
 
     print('**SUCCESSFULLY TUNED MODEL**')
 

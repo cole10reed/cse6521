@@ -118,15 +118,6 @@ def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarra
     print(' **** SUCESSFULLY MADE IT THROUGH FINE TUNING *****')
     return model_tuning_dict
 
-
-
-
-
-    '''
-    fine tunes a given sam model then saves it as a checkpoint
-    '''
-    return 0
-
 def model_train(model: AutomaticMaskGenerator_WithGrad, image: np.ndarray):
     data = MaskData()
     orig_size = image.shape[:2]
