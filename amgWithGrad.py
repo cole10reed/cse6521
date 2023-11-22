@@ -1,3 +1,4 @@
+from torchmetrics import JaccardIndex
 import segment_anything as sa
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 from torchvision.ops.boxes import batched_nms, box_area 
@@ -28,13 +29,16 @@ from typing import Any, Dict, List, Optional, Tuple
 class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
     '''
     This class is an identical child class of SamAutomaticMaskGenerator EXCEPT we override two things:
-    _process_crop and _process_batch are overriden and remain exactly the same except the exclusion of @torch.no_grad so we can run this with gradients
-    In the init function, self.predictor is now the SamPredictor_WithGrad instead of SamPredictor, which overrides .predict so we can call it with gradients
+
+    1. wrote _process_batch_and_do_grad_descent which is similiar to process batch except after predictions we dedup right away and run grad descent.
+
+    2. In the init function, self.predictor is now the SamPredictor_WithGrad instead of SamPredictor, which overrides .predict so we can call it with gradients.
+    It is identical to its parent class function except torch_no_grad is removed.
     '''
     def __init__(
         self,
         model: Sam,
-        labels: [],
+        labels: torch.Tensor,
         points_per_side: Optional[int] = 32,
         points_per_batch: int = 64,
         pred_iou_thresh: float = 0.88,
@@ -133,57 +137,11 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         self.output_mode = output_mode
         self.labels = labels
 
-    def _process_crop(
-    self,
-    image: np.ndarray,
-    crop_box: List[int],
-    crop_layer_idx: int,
-    orig_size: Tuple[int, ...],
-  ) -> MaskData:
-        # Crop the image and calculate embeddings
-        x0, y0, x1, y1 = crop_box
-        cropped_im = image[y0:y1, x0:x1, :]
-        cropped_im_size = cropped_im.shape[:2]
-        self.predictor.set_image(cropped_im)
-
-        # Get points for this crop
-        points_scale = np.array(cropped_im_size)[None, ::-1]
-        points_for_image = self.point_grids[crop_layer_idx] * points_scale
-
-        # Generate masks for this crop in batches
-        data = MaskData()
-        test_it = batch_iterator(self.points_per_batch, points_for_image)
-        i = 0
-        for(points,) in test_it:
-            print(points)
-            print(i)
-            i += 1
-
-        for (points,) in batch_iterator(self.points_per_batch, points_for_image):
-            batch_data = self._process_batch(points, cropped_im_size, crop_box, orig_size)
-            data.cat(batch_data)
-            del batch_data
-        self.predictor.reset_image()
-
-        # Remove duplicates within this crop.
-        keep_by_nms = batched_nms(
-            data["boxes"].float(),
-            data["iou_preds"],
-            torch.zeros_like(data["boxes"][:, 0]),  # categories
-            iou_threshold=self.box_nms_thresh,
-        )
-        data.filter(keep_by_nms)
-
-        # Return to the original image frame
-        data["boxes"] = uncrop_boxes_xyxy(data["boxes"], crop_box)
-        data["points"] = uncrop_points(data["points"], crop_box)
-        data["crop_boxes"] = torch.tensor([crop_box for _ in range(len(data["rles"]))])
-
-        return data
-
-
-    def _process_batch(
+    def _process_batch_and_do_grad_desc(
         self,
+        truth_image: np.ndarray,
+        loss_func,
+        optimizer,
         points: np.ndarray,
         im_size: Tuple[int, ...],
         crop_box: List[int],
@@ -191,11 +149,13 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
     ) -> MaskData:
         orig_h, orig_w = orig_size
 
+        print(' ** Making predicted masks **')
+
         # Run model on this batch
         transformed_points = self.predictor.transform.apply_coords(points, im_size)
         in_points = torch.as_tensor(transformed_points, device=self.predictor.device)
         in_labels = torch.ones(in_points.shape[0], dtype=torch.int, device=in_points.device)
-        masks, iou_preds, _ =  self.predictor.predict_torch(self.labels,
+        masks, iou_preds, _ =  self.predictor.predict_torch(
             in_points[:, None, :],
             in_labels[:, None],
             multimask_output=True,
@@ -208,6 +168,20 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
             points=torch.as_tensor(points.repeat(masks.shape[1], axis=0)),
         )
         del masks
+
+        """
+        ********************************
+         *** Below is all the filtering and deduping done in the original generate_masks, process_crop and process_batch ***
+
+         *** TODO ***
+         I THINK, what the issue is, is we need to run the loss function and optimizer on the original tensor -
+         masks , because that tensor actually has some of the gradient needed for backpropogation and I THINK
+         this is getting lost in all these transforms. Good news is that we probably can then remove all this filtering and processing gibberish,
+         bad news is we will need some kind of logic to convert the original tensor to match the shape of the truth masks
+
+         Note - there is also a postprocessing step in SamPredictor.predict. We may need to check that as well in SamPRedictor.WithGrad.predict
+         ***** Second note - I shared some pictures of debugging on teams that I think proves my above theory correct. grad_func is missing when we pass the tensor to the loss function
+        """
 
         # Filter by predicted IoU
         if self.pred_iou_thresh > 0.0:
@@ -235,5 +209,163 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         data["masks"] = uncrop_masks(data["masks"], crop_box, orig_h, orig_w)
         data["rles"] = mask_to_rle_pytorch(data["masks"])
         del data["masks"]
+    
+        ######### HERE START GRAD DESCENT ON IOU_PREDS BEFORE FUNCTION CAN THROW DEEPCOPY ERROR ####
 
-        return data
+        ##code to remove duplicates from crop (i dont think this is needed
+
+
+        keep_by_nms = batched_nms(
+            data["boxes"].float(),
+            data["iou_preds"],
+            torch.zeros_like(data["boxes"][:, 0]),  # categories
+            iou_threshold=self.box_nms_thresh,
+        )
+        data.filter(keep_by_nms)
+
+        # Return to the original image frame
+        data["boxes"] = uncrop_boxes_xyxy(data["boxes"], crop_box)
+        data["points"] = uncrop_points(data["points"], crop_box)
+        data["crop_boxes"] = torch.tensor([crop_box for _ in range(len(data["rles"]))])
+
+        data.to_numpy()
+
+
+        # Filter small disconnected regions and holes in masks
+        if self.min_mask_region_area > 0:
+              data = self.postprocess_small_regions(
+                data,
+                self.min_mask_region_area,
+                max(self.box_nms_thresh, self.crop_nms_thresh),
+            )
+
+        # Encode masks
+        if self.output_mode == "coco_rle":
+            data["segmentations"] = [coco_encode_rle(rle) for rle in data["rles"]]
+        elif self.output_mode == "binary_mask":
+            data["segmentations"] = [rle_to_mask(rle) for rle in data["rles"]]
+        else:
+            data["segmentations"] = data["rles"]
+
+        # Write mask records
+        curr_anns = []
+        for idx in range(len(data["segmentations"])):
+            ann = {
+                "segmentation": data["segmentations"][idx],
+                "area": area_from_rle(data["rles"][idx]),
+                "bbox": box_xyxy_to_xywh(data["boxes"][idx]).tolist(),
+                "predicted_iou": data["iou_preds"][idx].item(),
+                "point_coords": [data["points"][idx].tolist()],
+                "stability_score": data["stability_score"][idx].item(),
+                "crop_box": box_xyxy_to_xywh(data["crop_boxes"][idx]).tolist(),
+            }
+            curr_anns.append(ann)
+
+        masks = curr_anns
+       
+        print(' *** Grad Descent Begginging ***')
+        num_buildings = truth_image.max()
+
+        true_pos = list()
+        jaccard = JaccardIndex(task='binary')
+
+        image_size = 2048 * 2048
+        shape = (num_buildings, image_size)
+        #print(shape)
+        # all_truth_masks = np.zeros(shape)
+        #print(all_truth_masks.shape)
+        loss_sum = 0
+
+        # all_pred_masks = np.zeros(shape)
+        nbreaks = 0
+        ncontinue = 0
+        sum_iou = 0
+
+        '''
+        Below is same logic as we did in task one, that loops through all the masks, find matches, and calculates IoU and runs grad descent.
+        I starting fiddling with trying to do the calculation and gradient descent
+        on one whole tensor with all the masks instead of one mask at a time, i think that would be more efficient,
+        but I haven't finished that yet.
+        '''
+
+        for i in range(num_buildings + 1):
+          building_mask = np.where(truth_image==i, 1, 0)
+          building_mask_tensor = torch.from_numpy(building_mask)
+          arr = np.nonzero(building_mask)
+
+          # building_mask_2 = building_mask.flatten()
+          # all_truth_masks[i - 1] = building_mask_2 # append building mask to all truth mask
+          # np.concatenate(all_truth_mask, building_mask)
+          
+          # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
+          # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
+          by1 = min(arr[0])
+          by2 = max(arr[0])
+          bx1 = min(arr[1])
+          bx2 = max(arr[1])
+
+          for j in range(len(masks)):
+            x,y,h,w = masks[j]['bbox']
+            
+            if (x > bx2):   # Masks are past the building, no more possible intersections.
+                nbreaks += 1
+                break
+            
+            if (y+h < by1):
+                ncontinue += 1
+                continue
+            if (y > by2):
+                ncontinue += 1
+                continue
+            if (x+w < bx1):
+                ncontinue += 1
+                continue
+            
+            segment = torch.from_numpy(masks[j]['segmentation'])
+            # segment_num = masks[j]['segmentation'].flatten()
+            res = jaccard(building_mask_tensor, segment)
+
+            ### Here we've found a true positive, let's calculate the loss using loss_func and optimizer ###
+            if (res >= 0.45):
+                true_pos.append(i)
+                sum_iou = sum_iou + res
+                # all_pred_masks[i - 1] = segment_num
+
+                building_mask_tensor_float = building_mask_tensor.float()
+                segment = segment.float()
+
+                loss = loss_func(building_mask_tensor_float, segment)
+                loss_sum += loss
+                loss.requires_grad = True
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                
+                del(masks[j])
+                break
+
+          ##now, if bounding box is within batch coordinates, we add the mask
+
+
+        # all_truth_masks_torch = torch.from_numpy(all_truth_masks)
+        # all_pred_masks_torch = torch.from_numpy(all_pred_masks)
+        # preds_encoded = [rle_to_mask(rle) for rle in data["rles"]]
+        # preds_to_torch = torch.from_numpy(preds_encoded)
+        # IoU_total = jaccard(all_truth_masks_torch, all_pred_masks_torch)
+        #loss = loss_func(all_truth_masks_torch.flatten(0,1), preds_to_torch)
+        loss.requires_grad = True
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        IoU_avg = sum_iou/len(true_pos)
+
+        return IoU_avg, loss_sum, len(masks)
+
+
+
+        # Return to the original image frame
+        # data["boxes"] = uncrop_boxes_xyxy(data["boxes"], crop_boxes[0])
+        # data["points"] = uncrop_points(data["points"], crop_boxes[0])
+        # data["crop_boxes"] = torch.tensor([crop_boxes[0] for _ in range(len(data["rles"]))])
+
+        # return data

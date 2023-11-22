@@ -10,7 +10,6 @@ class SamPredictor_WithGrad(SamPredictor):
     # and methods of the original SamPredictor class the same
     def predict_torch(
             self,
-            mask_labels: [],
             point_coords: Optional[torch.Tensor],
             point_labels: Optional[torch.Tensor],
             boxes: Optional[torch.Tensor] = None,
@@ -79,8 +78,6 @@ class SamPredictor_WithGrad(SamPredictor):
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=multimask_output,
         )
-
-        mask_labels = 0
 
         # Upscale the masks to the original image resolution
         masks = self.model.postprocess_masks(low_res_masks, self.input_size, self.original_size)

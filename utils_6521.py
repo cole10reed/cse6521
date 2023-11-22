@@ -19,7 +19,7 @@ def get_truth_files(directory):
 
 def get_truth_masks(truth_image):
     num_buildings = truth_image.max()
-    truth_masks = np.zeros(num_buildings, 2048, 2048)
+    truth_masks = np.zeros((num_buildings, 2048, 2048))
     for i in range(num_buildings + 1):
         if (i == 0):
             continue

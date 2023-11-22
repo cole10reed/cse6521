@@ -31,6 +31,7 @@ from segment_anything import SamPredictor
 from segment_anything.modeling import Sam
 from typing import Any, Dict, List, Optional, Tuple
 from amgWithGrad import AutomaticMaskGenerator_WithGrad
+from FineTune import fine_tune
 
 
 def show_anns(anns):
@@ -224,6 +225,7 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
     print('Number of true positives:', len(true_pos))
     print('Number of false negatives:', num_buildings-len(true_pos))
     print('Execution time:', elapsed_time, 'seconds')
+    print('total number of masks created by model: ', len(masks))
     # print('Number of breaks', nbreaks)
     # print('Number of continues', ncontinue)
     return sum_iou, len(true_pos), all_truth_masks, all_pred_masks
@@ -236,52 +238,67 @@ def main(
           model_type = 'vit_h',
            dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
            ):
-    with torch.no_grad():
-        sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
+    # with torch.no_grad():
+
+    # model to fine tune
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
 
     points_per_side = 32
-
-    model_in_training = SamAutomaticMaskGenerator(sam, points_per_side=points_per_side) 
-    test=sam.state_dict()
-    optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
-    params = []
-    for param in test:
-        params.append(param)
-    loss_func = torch.nn.MSELoss().cuda()
 
     image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
     # print(image)
     truth_image = utils.get_truth_image(dataset_loc + r'GT/JAX_Tile_052_GTI.tif', 2048, 2048)
+
+    all_truth_masks = utils.get_truth_masks(truth_image)
+
+    ## creates SAM Aut mask generator except this class has overriden the functions that use torch_nograd
+    model_in_training = AutomaticMaskGenerator_WithGrad(sam, all_truth_masks , points_per_side=points_per_side) 
+
+    # *** FINE TUNING DONE HERE ***
+    print('*** Begging fine tuning for model ', model_type, 'at checkpoint ', sam_checkpoint)
+
+    optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
+    loss_func = torch.nn.MSELoss()
+
+   # model_save_dic = fine_tune(sam, model_in_training, image, truth_image, optimizer, loss_func, 1)
+
+    print('**SUCCESSFULLY TUNED MODEL**')
+
+
+    # After fine tuning, test and see if new models have any changes to parameters
+    sam_tuned = sam = sam_model_registry[model_type](checkpoint='tuned_models/model_4.pth')#.to(device = gpu_device)
+
+    #store params
+    paramdic_base = {}
+    paramdic_tuned = {}
+
+    #sam has an iterator to iterate over params. Save them in corresponding dic
+    for (param_name, param) in sam.mask_decoder.named_parameters():
+        paramdic_base[param_name] = param
     
-    for i in range(5):
-        masks = model_train(model_in_training, image)
+    for(param_name, param) in sam_tuned.mask_decoder.named_parameters():
+        paramdic_tuned[param_name] = param
 
-        ### Here we calculate loss building-by-building and call optimizer ###
-        sum_iou, num_true_positive, all_truth_masks, all_pred_masks = grad_descent(masks=masks, truth_image=truth_image, loss_func=loss_func, optimizer=optimizer)
+    #### look for changes in parameters
+    weights_updated = False
+    weight_diff = {}
+    for (param_name, param) in paramdic_base.items():
+        if not paramdic_tuned[param_name].equal(param): # tensor.equal returns true if tensor is exactly the same (values and all other elements of tensor)
+            weights_udpated = True
+            weight_diff[param_name] = paramdic_tuned[param_name].eq(param) # this goes element by element and returns a tensor of true and falses corresponding to which exact elements have changed (i.e are different)
+    
+    if not weights_updated: # not one change in parameter detected
+        print('Model weights are exactly the same')
 
-        jaccard = JaccardIndex(task='binary')
+    ''''TODO: I havent actually run the new models and got full prediction calculations like we do in Task1 - 
+    after we see changes in weights we should start test running the new tuned checkpoints'''
 
-        all_truth_masks_torch = torch.from_numpy(all_truth_masks)
-        all_pred_masks_torch = torch.from_numpy(all_pred_masks)
-        IoU_total = jaccard(all_truth_masks_torch, all_pred_masks_torch)
-        loss = loss_func(all_truth_masks_torch, all_pred_masks_torch)
-        loss.requires_grad = True
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        print(f'Iteration  {i}: {(sum_iou / num_true_positive)}')
-        print('IoU Total: ***: ', IoU_total )
-        print('*** Loss : ***', loss)
-        print('************ WEIGHT TENSOR *************: ', test['mask_decoder.transformer.layers.0.self_attn.q_proj.weight'])
-
-
-    plt.figure(figsize=(20,20))
-    plt.imshow(image)
-    show_anns(masks)
-    plt.axis('off')
-    plt.savefig(fname='test_task2')
-    plt.show()
-
+   # plt.figure(figsize=(20,20))
+   # plt.imshow(image)
+   # show_anns(masks)
+   # plt.axis('off')
+   # plt.savefig(fname='test_task2')
+   # plt.show()
     
 
 if __name__ == '__main__':
