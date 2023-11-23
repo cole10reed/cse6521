@@ -248,6 +248,7 @@ def main(
     image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
     # print(image)
     truth_image = utils.get_truth_image(dataset_loc + r'GT/JAX_Tile_052_GTI.tif', 2048, 2048)
+    print('Image shape', truth_image.shape)
 
     all_truth_masks = utils.get_truth_masks(truth_image)
 

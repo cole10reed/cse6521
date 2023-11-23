@@ -163,7 +163,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
             multimask_output=True,
             return_logits=True,
          )
-
+        print('Orig masks grad_fn:', masks.grad_fn)
         masks = masks.flatten(0, 1)
         bin_masks = masks > 0 # Turn logit mask into binary mask of building (True = building_prediction, False = background_prediction)
         unique = bin_masks[0][0].unique(return_counts=True)
@@ -306,8 +306,8 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         '''
         h, w = truth_image.shape
         num_matches = 0
-        reordered_prediction_masks = torch.from_numpy(np.zeros(shape=(num_buildings, h, w)))
-        reordered_truth_masks = torch.from_numpy(np.zeros(shape=(num_buildings, h, w)))
+        # reordered_prediction_masks = torch.from_numpy(np.zeros(shape=(num_buildings, h, w)))
+        reordered_truth_masks = torch.from_numpy(np.zeros(shape=(len(masks), h, w)))
         # These two masks will be used to put building/prediction matches at the same row, in order to calculate loss all at once
 
         for i in range(num_buildings + 1):
@@ -356,25 +356,26 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
             if (res >= 0.45):
                 true_pos.append(i)
                 # reordered_prediction_masks[num_matches] = deepcopy(masks[j])
-                # reordered_truth_masks[num_matches] = deepcopy(building_mask_tensor)
+                if (not reordered_truth_masks[j].any()):
+                    reordered_truth_masks[j] = building_mask_tensor.float()
                 # print('reordered Grad_fn:', reordered_prediction_masks.grad_fn)
 
                 num_matches = num_matches + 1
                 sum_iou = sum_iou + res
                 # all_pred_masks[i - 1] = segment_num
 
-                building_mask_tensor_float = building_mask_tensor.float()
+                # building_mask_tensor_float = building_mask_tensor.float()
                 # segment = segment.float()
-                segment = masks[j]
-                print('Segment grad:', segment.grad_fn)
-                with torch.autograd.set_detect_anomaly(True):
-                    loss = loss_func(building_mask_tensor_float, segment)
+                # segment = masks[j]
+                # print('Segment grad:', segment.grad_fn)
+                # with torch.autograd.set_detect_anomaly(True):
+                #     loss = loss_func(building_mask_tensor_float, segment)
                     
-                    # loss.requires_grad = True
-                    optimizer.zero_grad()
-                    loss.backward(retain_graph=True)
-                    loss_sum += loss.item()
-                    # optimizer.step()
+                #     # loss.requires_grad = True
+                #     optimizer.zero_grad()
+                #     loss.backward(retain_graph=True)
+                #     loss_sum += loss.item()
+                #     # optimizer.step()
                 
                 # del(masks[j])
                 break
@@ -386,16 +387,20 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         # all_pred_masks_torch = torch.from_numpy(all_pred_masks)
         # preds_encoded = [rle_to_mask(rle) for rle in data["rles"]]
         # preds_to_torch = torch.from_numpy(preds_encoded)
-        # IoU_total = jaccard(all_truth_masks_torch, all_pred_masks_torch)
-        #loss = loss_func(all_truth_masks_torch.flatten(0,1), preds_to_torch)
+        # IoU_total = jaccard(reordered_truth_masks, masks)
+        print('------GRADIENT COMPUTATION------')
+        masks = masks.float()
+        reordered_truth_masks = reordered_truth_masks.float()
+        print('Mask grad_fn:', masks.grad_fn)
+        loss = loss_func(reordered_truth_masks, masks)
         # loss.requires_grad = True
-        # optimizer.zero_grad()
-        # loss.backward()
-        # optimizer.step()
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
         IoU_avg = sum_iou/len(true_pos)
 
-        return IoU_avg, loss_sum, len(masks)
-
+        # return IoU_avg, loss_sum, len(masks)
+        return IoU_avg, loss.item(), len(masks)
 
 
         # Return to the original image frame
