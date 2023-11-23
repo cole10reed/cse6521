@@ -355,9 +355,9 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
             ### Here we've found a true positive, let's calculate the loss using loss_func and optimizer ###
             if (res >= 0.45):
                 true_pos.append(i)
-                reordered_prediction_masks[num_matches] = deepcopy(masks[j])
-                reordered_truth_masks[num_matches] = deepcopy(building_mask_tensor)
-                print('reordered Grad_fn:', reordered_prediction_masks.grad_fn)
+                # reordered_prediction_masks[num_matches] = deepcopy(masks[j])
+                # reordered_truth_masks[num_matches] = deepcopy(building_mask_tensor)
+                # print('reordered Grad_fn:', reordered_prediction_masks.grad_fn)
 
                 num_matches = num_matches + 1
                 sum_iou = sum_iou + res
