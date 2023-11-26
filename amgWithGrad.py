@@ -39,7 +39,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
     def __init__(
         self,
         model: Sam,
-        labels: torch.Tensor,
+        # labels: torch.Tensor,
         points_per_side: Optional[int] = 32,
         points_per_batch: int = 64,
         pred_iou_thresh: float = 0.88,
@@ -136,7 +136,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         self.crop_n_points_downscale_factor = crop_n_points_downscale_factor
         self.min_mask_region_area = min_mask_region_area
         self.output_mode = output_mode
-        self.labels = labels
+        # self.labels = labels
 
     def _process_batch_and_do_grad_desc(
         self,
@@ -199,87 +199,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
          Note - there is also a postprocessing step in SamPredictor.predict. We may need to check that as well in SamPRedictor.WithGrad.predict
          ***** Second note - I shared some pictures of debugging on teams that I think proves my above theory correct. grad_func is missing when we pass the tensor to the loss function
         """
-        """
-        # Filter by predicted IoU
-        if self.pred_iou_thresh > 0.0:
-            keep_mask = data["iou_preds"] > self.pred_iou_thresh
-            data.filter(keep_mask)
-
-        # Calculate stability score
-        data["stability_score"] = calculate_stability_score(
-            data["masks"], self.predictor.model.mask_threshold, self.stability_score_offset
-        )
-        if self.stability_score_thresh > 0.0:
-            keep_mask = data["stability_score"] >= self.stability_score_thresh
-            data.filter(keep_mask)
-
-        # Threshold masks and calculate boxes
-        data["masks"] = data["masks"] > self.predictor.model.mask_threshold
-        data["boxes"] = batched_mask_to_box(data["masks"])
-
-        # Filter boxes that touch crop boundaries
-        keep_mask = ~is_box_near_crop_edge(data["boxes"], crop_box, [0, 0, orig_w, orig_h])
-        if not torch.all(keep_mask):
-            data.filter(keep_mask)
-
-        # Compress to RLE
-        data["masks"] = uncrop_masks(data["masks"], crop_box, orig_h, orig_w)
-        data["rles"] = mask_to_rle_pytorch(data["masks"])
-        del data["masks"]
-    
-        ######### HERE START GRAD DESCENT ON IOU_PREDS BEFORE FUNCTION CAN THROW DEEPCOPY ERROR ####
-
-        ##code to remove duplicates from crop (i dont think this is needed
-
-
-        keep_by_nms = batched_nms(
-            data["boxes"].float(),
-            data["iou_preds"],
-            torch.zeros_like(data["boxes"][:, 0]),  # categories
-            iou_threshold=self.box_nms_thresh,
-        )
-        data.filter(keep_by_nms)
-
-        # Return to the original image frame
-        data["boxes"] = uncrop_boxes_xyxy(data["boxes"], crop_box)
-        data["points"] = uncrop_points(data["points"], crop_box)
-        data["crop_boxes"] = torch.tensor([crop_box for _ in range(len(data["rles"]))])
-
-        data.to_numpy()
-
-
-        # Filter small disconnected regions and holes in masks
-        if self.min_mask_region_area > 0:
-              data = self.postprocess_small_regions(
-                data,
-                self.min_mask_region_area,
-                max(self.box_nms_thresh, self.crop_nms_thresh),
-            )
-
-        # Encode masks
-        if self.output_mode == "coco_rle":
-            data["segmentations"] = [coco_encode_rle(rle) for rle in data["rles"]]
-        elif self.output_mode == "binary_mask":
-            data["segmentations"] = [rle_to_mask(rle) for rle in data["rles"]]
-        else:
-            data["segmentations"] = data["rles"]
-
-        # Write mask records
-        curr_anns = []
-        for idx in range(len(data["segmentations"])):
-            ann = {
-                "segmentation": data["segmentations"][idx],
-                "area": area_from_rle(data["rles"][idx]),
-                "bbox": box_xyxy_to_xywh(data["boxes"][idx]).tolist(),
-                "predicted_iou": data["iou_preds"][idx].item(),
-                "point_coords": [data["points"][idx].tolist()],
-                "stability_score": data["stability_score"][idx].item(),
-                "crop_box": box_xyxy_to_xywh(data["crop_boxes"][idx]).tolist(),
-            }
-            curr_anns.append(ann)
-
-        masks = curr_anns
-        """
+        
         print(' *** Grad Descent Begginging ***')
         num_buildings = truth_image.max()
 
@@ -288,9 +208,6 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
 
         image_size = 2048 * 2048
         shape = (num_buildings, image_size)
-        #print(shape)
-        # all_truth_masks = np.zeros(shape)
-        #print(all_truth_masks.shape)
         loss_sum = 0
 
         # all_pred_masks = np.zeros(shape)
@@ -306,19 +223,14 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         '''
         h, w = truth_image.shape
         num_matches = 0
-        # reordered_prediction_masks = torch.from_numpy(np.zeros(shape=(num_buildings, h, w)))
         reordered_truth_masks = torch.from_numpy(np.zeros(shape=(len(masks), h, w)))
-        # These two masks will be used to put building/prediction matches at the same row, in order to calculate loss all at once
+        # Reordered masks will be used to put building/prediction matches at the same row, in order to calculate loss all at once
 
         for i in range(num_buildings + 1):
           building_mask = np.where(truth_image==i, 1, 0)
           building_mask_tensor = torch.from_numpy(building_mask)
           arr = np.nonzero(building_mask)
 
-          # building_mask_2 = building_mask.flatten()
-          # all_truth_masks[i - 1] = building_mask_2 # append building mask to all truth mask
-          # np.concatenate(all_truth_mask, building_mask)
-          
           # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
           # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
           by1 = min(arr[0])
@@ -348,50 +260,27 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
                 ncontinue += 1
                 continue
             
-            segment = bin_masks[j] #torch.from_numpy(masks[j][0])
-            # segment_num = masks[j]['segmentation'].flatten()
+            segment = bin_masks[j]
             res = jaccard(building_mask_tensor, segment)
 
             ### Here we've found a true positive, let's calculate the loss using loss_func and optimizer ###
             if (res >= 0.45):
                 true_pos.append(i)
-                # reordered_prediction_masks[num_matches] = deepcopy(masks[j])
+                
                 if (not reordered_truth_masks[j].any()):
                     reordered_truth_masks[j] = building_mask_tensor.float()
-                # print('reordered Grad_fn:', reordered_prediction_masks.grad_fn)
-
+                
                 num_matches = num_matches + 1
                 sum_iou = sum_iou + res
-                # all_pred_masks[i - 1] = segment_num
-
-                # building_mask_tensor_float = building_mask_tensor.float()
-                # segment = segment.float()
-                # segment = masks[j]
-                # print('Segment grad:', segment.grad_fn)
-                # with torch.autograd.set_detect_anomaly(True):
-                #     loss = loss_func(building_mask_tensor_float, segment)
-                    
-                #     # loss.requires_grad = True
-                #     optimizer.zero_grad()
-                #     loss.backward(retain_graph=True)
-                #     loss_sum += loss.item()
-                #     # optimizer.step()
                 
-                # del(masks[j])
                 break
 
           ##now, if bounding box is within batch coordinates, we add the mask
 
 
-        # all_truth_masks_torch = torch.from_numpy(all_truth_masks)
-        # all_pred_masks_torch = torch.from_numpy(all_pred_masks)
-        # preds_encoded = [rle_to_mask(rle) for rle in data["rles"]]
-        # preds_to_torch = torch.from_numpy(preds_encoded)
-        # IoU_total = jaccard(reordered_truth_masks, masks)
         print('------GRADIENT COMPUTATION------')
         masks = masks.float()
         reordered_truth_masks = reordered_truth_masks.float()
-        print('Mask grad_fn:', masks.grad_fn)
         loss = loss_func(reordered_truth_masks, masks)
         # loss.requires_grad = True
         optimizer.zero_grad()
@@ -399,13 +288,4 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         optimizer.step()
         IoU_avg = sum_iou/len(true_pos)
 
-        # return IoU_avg, loss_sum, len(masks)
         return IoU_avg, loss.item(), len(masks)
-
-
-        # Return to the original image frame
-        # data["boxes"] = uncrop_boxes_xyxy(data["boxes"], crop_boxes[0])
-        # data["points"] = uncrop_points(data["points"], crop_boxes[0])
-        # data["crop_boxes"] = torch.tensor([crop_boxes[0] for _ in range(len(data["rles"]))])
-
-        # return data

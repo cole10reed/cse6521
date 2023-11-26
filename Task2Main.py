@@ -236,32 +236,47 @@ def main(
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
          gpu_device = 'cuda',
           model_type = 'vit_h',
-           dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
+           dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
+           num_epochs = 20
            ):
     # with torch.no_grad():
+
+    # get list of all input and truth images in the specified directory
+    input_images = utils.get_input_files(dataset_loc)
+    truth_images = utils.get_truth_files(dataset_loc)
+
+    input_list = list()
+    truth_list = list()
+    for i in input_images:
+        input_list.append(str(i))
+    for i in truth_images:
+        truth_list.append(str(i))
 
     # model to fine tune
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
 
     points_per_side = 32
 
-    image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
-    # print(image)
-    truth_image = utils.get_truth_image(dataset_loc + r'GT/JAX_Tile_052_GTI.tif', 2048, 2048)
-    print('Image shape', truth_image.shape)
-
-    all_truth_masks = utils.get_truth_masks(truth_image)
-
     ## creates SAM Aut mask generator except this class has overriden the functions that use torch_nograd
-    model_in_training = AutomaticMaskGenerator_WithGrad(sam, all_truth_masks , points_per_side=points_per_side) 
-
-    # *** FINE TUNING DONE HERE ***
-    print('*** Begging fine tuning for model ', model_type, 'at checkpoint ', sam_checkpoint)
+    model_in_training = AutomaticMaskGenerator_WithGrad(sam, points_per_side=points_per_side)
 
     optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
     loss_func = torch.nn.MSELoss()
 
-    model_dic = fine_tune(sam, model_in_training, image, truth_image, optimizer, loss_func, 1)
+    for j in range(num_epochs):
+        for k in range(len(input_list)):
+            input_image = cv2.imread(input_list[k])
+            # print(image)
+            truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
+            
+            # *** FINE TUNING DONE HERE ***
+            print('*** Beginning fine tuning for model ', model_type, 'at checkpoint ', sam_checkpoint)
+            print('Image:', input_list[k])
+            print('Iteration:', j)
+
+            model_dic = fine_tune(sam, model_in_training, input_image, truth_image, optimizer, loss_func, 1)
+            print(f'Image{k}: {input_list[k]} is complete.')
+        print(f'***COMPLETED ITERATION {j}***')
 
     print('**SUCCESSFULLY TUNED MODEL**')
 

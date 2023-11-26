@@ -79,22 +79,24 @@ def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarra
 
         # data = MaskData()
         j = 0 # keep track of number of batches
-        print('** Beggining batch iterator **')
+        print('** Beginning batch iterator **')
 
         # this iterator, which is the same as the original, has 16 iterations. Feel free to cut it after a certain number of iterations if it takes to long
         for (points,) in batch_iterator(model.points_per_batch, points_for_image):
-            print("Beggining batch run for batch: ", j)
+            print("Beginning batch run for batch: ", j)
             # print(points)
             IoU_avg, loss, nMasks = model._process_batch_and_do_grad_desc(truth_image, loss_func, optimizer, points, cropped_im_size, crop_boxes[0], orig_size)
             print('*** IoU: ', IoU_avg)
             print('*** Loss ', loss)
             print('**** nMasks for this batch: ', nMasks)
-            fpath = f"tuned_models/model_{j}.pth"
-            print("Saving model to path: ", fpath)
-            torch.save(sam.state_dict(), f"tuned_models/model_{j}.pth")
-            model_dic = {'IoU_avg':IoU_avg, 'loss': loss, 'nMasks': nMasks, 'fpath': fpath}
-            model_tuning_dict.append(model_dic)
-            # model_save_dic[i] = {'IoU_sum': IoU_sum, 'loss_sum': loss_sum, 'nMasks_tot': nMasks_tot, 'fpaths': fpaths}
+            
+            if (j % 20 == 0):
+                fpath = f"tuned_models/model_{j}.pth"
+                print("Saving model to path: ", fpath)
+                torch.save(sam.state_dict(), f"tuned_models/model_{j}.pth")
+                model_dic = {'IoU_avg':IoU_avg, 'loss': loss, 'nMasks': nMasks, 'fpath': fpath}
+                model_tuning_dict.append(model_dic)
+            
             print('*** Completed Batch **** : ', j)
             j += 1
         model.predictor.reset_image()
