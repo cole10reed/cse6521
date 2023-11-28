@@ -327,10 +327,17 @@ def main(
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
         model_type = 'vit_h',
         dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
-        num_epochs = 20
+        num_epochs = 5
            ):
-    # with torch.no_grad():
-    # model to fine tune
+
+    print('Started Task2 Main with input args: \n', 
+          'device: ', device, '\n',
+          'tune_model: ', tune_model, '\n',
+          'sam_checkpoint: ', sam_checkpoint, '\n',
+          'model_type: ', model_type, '\n',
+          'dataset_loc: ', dataset_loc, '\n',
+          'num_epochs: ', num_epochs, '\n')
+    
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = device)
 
     ## task 2: first tune models. Then compare tuned to base

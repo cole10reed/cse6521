@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from amgWithGrad import AutomaticMaskGenerator_WithGrad
 
 def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarray, truth_image: np.ndarray, optimizer, loss_func, num_epochs = 1):
-    fpaths = []
+
     model_tuning_dict = []
     for i in range(num_epochs):
         # set model tunig dict. Each element of array is an epoch. Each dictionary will contain all the batch runs for each epoch
@@ -48,12 +48,6 @@ def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarra
         crop_boxes, layer_idxs = generate_crop_boxes(
         orig_size, n_layers = 0, overlap_ratio = 512 / 1500
         )
-
-    # should only run once  - below is process_crop function
-        # crop_data = model._process_crop(image, crop_boxes[0], layer_idxs[0], orig_size)
-        # data = crop_data
-
-    # **** Instead of calling model.process crop the code for this function is below ****
 
     # Crop the image and calculate embeddings
         x0, y0, x1, y1 = crop_boxes[0]
@@ -90,7 +84,7 @@ def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarra
             print('*** Loss ', loss)
             print('**** nMasks for this batch: ', nMasks)
             
-            if (j % 20 == 0):
+            if (j % 5 == 0):
                 fpath = f"tuned_models/model_{j}.pth"
                 print("Saving model to path: ", fpath)
                 torch.save(sam.state_dict(), f"tuned_models/model_{j}.pth")
