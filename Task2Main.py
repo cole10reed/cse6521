@@ -1,3 +1,5 @@
+import sys
+sys.path.append('/users/PAS2622/mdsil11/cse6521/Segment-Anything/')
 import segment_anything as sa
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator
 from torchvision.ops.boxes import batched_nms, box_area
