@@ -136,7 +136,7 @@ def model_train(model: AutomaticMaskGenerator_WithGrad, image: np.ndarray):
     return curr_anns
 
     
-def grad_descent(masks, truth_image, loss_func, optimizer):
+def model_test(masks, truth_image):
     start = time.time()
 
     num_buildings = truth_image.max()
@@ -152,11 +152,11 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
 
     image_size = 2048 * 2048
     shape = (num_buildings, image_size)
-    print(shape)
-    all_truth_masks = np.zeros(shape)
-    print(all_truth_masks.shape)
+    # print(shape)
+    # all_truth_masks = np.zeros(shape)
+    # print(all_truth_masks.shape)
 
-    all_pred_masks = np.zeros(shape)
+    # all_pred_masks = np.zeros(shape)
 
     timeforloopstart = time.time()
     for i in range(num_buildings + 1):
@@ -165,12 +165,12 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
         building_mask = np.where(truth_image==i, 1, 0)
         # building_mask_2 = building_mask.reshape(building_mask.shape[0], -1).T #flattens mask into 1D
         building_mask_2 = building_mask.flatten()
-        all_truth_masks[i - 1] = building_mask_2 # append building mask to all truth mask
+        # all_truth_masks[i - 1] = building_mask_2 # append building mask to all truth mask
         # np.concatenate(all_truth_mask, building_mask)
         building_mask_tensor = torch.from_numpy(building_mask)
 
         arr = np.nonzero(building_mask)
-        print(f'Building {i}')
+        # print(f'Building {i}')
         
         # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
         # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
@@ -204,9 +204,9 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
             if (res >= 0.45):
                 true_pos.append(i)
                 sum_iou = sum_iou + res
-                all_pred_masks[i - 1] = segment_num
+                # all_pred_masks[i - 1] = segment_num
 
-                building_mask_tensor_float = building_mask_tensor.float()
+                # building_mask_tensor_float = building_mask_tensor.float()
                 segment = segment.float()
 
                 # loss = loss_func(building_mask_tensor_float, segment)
@@ -228,18 +228,111 @@ def grad_descent(masks, truth_image, loss_func, optimizer):
     print('total number of masks created by model: ', len(masks))
     # print('Number of breaks', nbreaks)
     # print('Number of continues', ncontinue)
-    return sum_iou, len(true_pos), all_truth_masks, all_pred_masks
+    return sum_iou, len(true_pos) #, all_truth_masks, all_pred_masks
+
+def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
+         gpu_device = 'cuda',
+          model_type = 'vit_h',
+           dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
+           tuned_checkpoint = 'tuned_models/model_4.pth'):
+        # base model
+
+    print('----- Starting model compare of base model ', model_type, 'with tuned model located at: ', tuned_checkpoint)
+
+    # sam_tuned = sam_model_registry[model_type](checkpoint=tuned_checkpoint)#.to(device = gpu_device)
+    points_per_side = 32
+
+    #mask generator for base
+    mask_generator = SamAutomaticMaskGenerator(sam, points_per_side)
+
+    #mask generator for tuned model
+    mask_generator_tuned = SamAutomaticMaskGenerator(sam_tuned, points_per_side)
+
+    #start with 1 image for now
+    # image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
+
+    # print(image)
+    # truth_image = utils.get_truth_image(dataset_loc + r'GT/JAX_Tile_052_GTI.tif', 2048, 2048)
+    # print('Image shape', truth_image.shape)
+
+    # next steps:
+    # 1. run image test code on model 1 
+    # run image test code on tuned model
+    # compare the results
+    #move to osc
+
+    print('Fetching Datasets from location ', dataset_loc)
+
+    input_list = list()
+    truth_list = list()
+
+    input_images = utils.get_input_files(dataset_loc)
+    truth_images = utils.get_truth_files(dataset_loc)
+
+    for i in input_images:
+        input_list.append(str(i))
+        print(str(i))
+    for i in truth_images:
+        truth_list.append(str(i))
+
+    
+    ## start looping over all images and test each model
+    image_results_dic = dict()
+    for k in range(len(input_list)):
+
+        jaccard = JaccardIndex(task='binary', num_classes = 2)#.to(device = gpu_device)
+        print('----------------------')
+
+        print('**** Reading in image ', k, 'out of image ', len(input_list) )
+        input_image = cv2.imread(input_list[k])
+        truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
+        masks_tuned = mask_generator_tuned.generate(input_image)
+        masks = mask_generator.generate(input_image)
+        print(' *********** Generated Masks *************** ' )
+
+        num_buildings = truth_image.max()
+        true_pos = list()
+
+        masks = sorted(masks, key=(lambda x: x['bbox']))
+        masks_tuned = sorted(masks_tuned, key=(lambda x: x['bbox']))
+    # input_masks = [torch.from_numpy(x['segmentation']) for x in masks]
+
+        print("Starting calculations for image ", input_list[k], 'and truth image ', truth_list[k])
+        print('Number_of_buildings: ', num_buildings)
+        print('Number of masks for original model: ', len(masks))
+        print('Number of masks for tuned model: ', len(masks_tuned))
+
+        # nbreaks = 0
+        # ncontinue = 0
+
+        # image_results_dic[k] = {'n_true_pos': 0, 'n_false_neg': 0, 'ImgExecutionTime': 0, 'avg_jac': 0}
+
+        sum_iou, nTruePos = model_test(masks, truth_image)
+        sum_iou_tuned, nTruePos_tuned = model_test(masks_tuned, truth_image)
+
+        print('Completing comparison of base model with tuned modelat path: ' , tuned_checkpoint)
+        print('**** IoU Comparison ****')
+        print('Avg IoU for base model: ' , sum_iou/nTruePos)
+        print('Avg IoU for tuned model: ', sum_iou_tuned/nTruePos_tuned)
+
+        print('***** End comparison *****')
+        #### compare masks on image k
 
 
 
 def main(
+        tune_model = False,
+        gpu_device = 'cuda',
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
-         gpu_device = 'cuda',
-          model_type = 'vit_h',
-           dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
-           num_epochs = 20
+        model_type = 'vit_h',
+        dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
+        num_epochs = 20
            ):
     # with torch.no_grad():
+    # model to fine tune
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
+
+    ## task 2: first tune models. Then compare tuned to base
 
     # get list of all input and truth images in the specified directory
     input_images = utils.get_input_files(dataset_loc)
@@ -252,9 +345,6 @@ def main(
     for i in truth_images:
         truth_list.append(str(i))
 
-    # model to fine tune
-    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
-
     points_per_side = 32
 
     ## creates SAM Aut mask generator except this class has overriden the functions that use torch_nograd
@@ -263,26 +353,32 @@ def main(
     optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
     loss_func = torch.nn.MSELoss()
 
-    for j in range(num_epochs):
-        for k in range(len(input_list)):
-            input_image = cv2.imread(input_list[k])
-            # print(image)
-            truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
-            
-            # *** FINE TUNING DONE HERE ***
-            print('*** Beginning fine tuning for model ', model_type, 'at checkpoint ', sam_checkpoint)
-            print('Image:', input_list[k])
-            print('Iteration:', j)
+    if tune_model:
+        for j in range(num_epochs):
+            for k in range(len(input_list)):
+                input_image = cv2.imread(input_list[k])
+                # print(image)
+                truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
+                
+                # *** FINE TUNING DONE HERE ***
+                print('*** Beginning fine tuning for model ', model_type, 'at checkpoint ', sam_checkpoint)
+                print('Image:', input_list[k])
+                print('Iteration:', j)
 
-            model_dic = fine_tune(sam, model_in_training, input_image, truth_image, optimizer, loss_func, 1)
-            print(f'Image{k}: {input_list[k]} is complete.')
-        print(f'***COMPLETED ITERATION {j}***')
+                model_dic = fine_tune(sam, model_in_training, input_image, truth_image, optimizer, loss_func, 1)
+                print(f'Image{k}: {input_list[k]} is complete.')
+            print(f'***COMPLETED ITERATION {j}***')
 
-    print('**SUCCESSFULLY TUNED MODEL**')
+        print('**SUCCESSFULLY TUNED MODEL**')
 
+    #step 2: compare tuned to base. for now, compare last model
+    if(tune_model):
+        last_tuned_model_path = model_dic.pop['fpath']
+    else:
+        last_tuned_model_path = 'tuned_models/model_4.pth' # default to some path
+    sam_tuned = sam_model_registry[model_type](checkpoint=last_tuned_model_path)#.to(device = gpu_device)
 
-    # After fine tuning, test and see if new models have any changes to parameters
-    sam_tuned = sam_model_registry[model_type](checkpoint='tuned_models/model_4.pth')#.to(device = gpu_device)
+    compare_tuned_to_base(sam, sam_tuned)
 
     #store params
     paramdic_base = {}
