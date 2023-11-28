@@ -61,10 +61,10 @@ def main(
           model_type = 'vit_h',
            dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
         ):
-    input_image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
-    print('Image type =', type(input_image))
+    # input_image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
+    # print('Image type =', type(input_image))
     # train_image = Image.open(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
-    truth_image = utils.get_truth_image(dataset_loc + r'GT/JAX_Tile_052_GTI.tif', 2048, 2048)
+    # truth_image = utils.get_truth_image(dataset_loc + r'GT/JAX_Tile_052_GTI.tif', 2048, 2048)
     
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)  # TODO: change checkpoint to the fine-tuned model for validation.
     # sam.to(device=device)
@@ -75,7 +75,7 @@ def main(
 
     jaccard = JaccardIndex(task='binary')  # This performs the IoU calculation.
     optimizer = torch.optim.Adam(classifier.parameters())
-    loss_func = torch.nn.BCELoss()
+    loss_func = torch.nn.MSELoss()
     
     # resize = transforms.Compose([transforms.Resize(size=(128, 128))])
     resize_dim = (128, 128)
@@ -163,7 +163,7 @@ def main(
                     
                     # Train the image classifier with a true building mask (label=1).
                     
-                    pred, err = train_step(classifier=classifier, image=bldg, label=1, optimizer=optimizer, loss_func=loss_func)
+                    pred, err = train_step(classifier=classifier, image=bldg, label=10, optimizer=optimizer, loss_func=loss_func)
                     sum_error += err
 
                     
@@ -171,7 +171,7 @@ def main(
                     print(f'Label: 1')
                     print(f'Difference: {err}')
                     
-                    if pred.item() >= 0.5:
+                    if pred.item() >= 5:
                         masks[j]['Found'] = True
                         correct_preds += 1
                     else:
@@ -196,7 +196,7 @@ def main(
             print(f'Label: 0')
             print(f'Difference: {err}')
 
-            if pred.item() < 0.5:
+            if pred.item() < 5:
                 masks[i]['Found'] = True
                 correct_preds += 1
             else:

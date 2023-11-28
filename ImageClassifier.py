@@ -27,7 +27,7 @@ class ImageClassifier(nn.Module):
  
         self.fc4 = nn.Linear(256, 1)
         nn.init.xavier_uniform_(self.fc4.weight)
-        self.act4 = nn.Sigmoid()
+        self.act4 = nn.LeakyReLU()
  
     def forward(self, x):
         # input 3x128x128, output 32x128x128
