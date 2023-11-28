@@ -33,7 +33,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from amgWithGrad import AutomaticMaskGenerator_WithGrad
 from FineTune import fine_tune
 
-
 def show_anns(anns):
     if len(anns) == 0:
         return
@@ -136,7 +135,7 @@ def model_train(model: AutomaticMaskGenerator_WithGrad, image: np.ndarray):
     return curr_anns
 
     
-def model_test(masks, truth_image):
+def model_test(masks, truth_image, device = 'cpu'):
     start = time.time()
 
     num_buildings = truth_image.max()
@@ -144,7 +143,7 @@ def model_test(masks, truth_image):
 
     masks = sorted(masks, key=(lambda x: x['bbox']))
     
-    jaccard = JaccardIndex(task='binary')
+    jaccard = JaccardIndex(task='binary').to(device = device)
 
     nbreaks = 0
     ncontinue = 0
@@ -167,7 +166,7 @@ def model_test(masks, truth_image):
         building_mask_2 = building_mask.flatten()
         # all_truth_masks[i - 1] = building_mask_2 # append building mask to all truth mask
         # np.concatenate(all_truth_mask, building_mask)
-        building_mask_tensor = torch.from_numpy(building_mask)
+        building_mask_tensor = torch.from_numpy(building_mask, device = device)
 
         arr = np.nonzero(building_mask)
         # print(f'Building {i}')
@@ -231,7 +230,7 @@ def model_test(masks, truth_image):
     return sum_iou, len(true_pos) #, all_truth_masks, all_pred_masks
 
 def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
-         gpu_device = 'cuda',
+         device = 'cpu',
           model_type = 'vit_h',
            dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
            tuned_checkpoint = 'tuned_models/model_4.pth'):
@@ -280,7 +279,7 @@ def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
     image_results_dic = dict()
     for k in range(len(input_list)):
 
-        jaccard = JaccardIndex(task='binary', num_classes = 2)#.to(device = gpu_device)
+        jaccard = JaccardIndex(task='binary', num_classes = 2).to(device = device)
         print('----------------------')
 
         print('**** Reading in image ', k, 'out of image ', len(input_list) )
@@ -307,10 +306,10 @@ def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
 
         # image_results_dic[k] = {'n_true_pos': 0, 'n_false_neg': 0, 'ImgExecutionTime': 0, 'avg_jac': 0}
 
-        sum_iou, nTruePos = model_test(masks, truth_image)
-        sum_iou_tuned, nTruePos_tuned = model_test(masks_tuned, truth_image)
+        sum_iou, nTruePos = model_test(masks, truth_image, device)
+        sum_iou_tuned, nTruePos_tuned = model_test(masks_tuned, truth_image, device)
 
-        print('Completing comparison of base model with tuned modelat path: ' , tuned_checkpoint)
+        print('Completing comparison of base model with tuned model at path: ' , tuned_checkpoint)
         print('**** IoU Comparison ****')
         print('Avg IoU for base model: ' , sum_iou/nTruePos)
         print('Avg IoU for tuned model: ', sum_iou_tuned/nTruePos_tuned)
@@ -321,8 +320,8 @@ def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
 
 
 def main(
+        device = 'cpu',
         tune_model = False,
-        gpu_device = 'cuda',
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
         model_type = 'vit_h',
         dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
@@ -330,7 +329,7 @@ def main(
            ):
     # with torch.no_grad():
     # model to fine tune
-    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)#.to(device = gpu_device)
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = device)
 
     ## task 2: first tune models. Then compare tuned to base
 
@@ -351,7 +350,7 @@ def main(
     model_in_training = AutomaticMaskGenerator_WithGrad(sam, points_per_side=points_per_side)
 
     optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
-    loss_func = torch.nn.MSELoss()
+    loss_func = torch.nn.MSELoss().to(device = device)
 
     if tune_model:
         for j in range(num_epochs):
@@ -376,9 +375,9 @@ def main(
         last_tuned_model_path = model_dic.pop['fpath']
     else:
         last_tuned_model_path = 'tuned_models/model_4.pth' # default to some path
-    sam_tuned = sam_model_registry[model_type](checkpoint=last_tuned_model_path)#.to(device = gpu_device)
+    sam_tuned = sam_model_registry[model_type](checkpoint=last_tuned_model_path).to(device = device)
 
-    compare_tuned_to_base(sam, sam_tuned)
+    compare_tuned_to_base(sam, sam_tuned, device = device)
 
     #store params
     paramdic_base = {}

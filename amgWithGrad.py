@@ -204,7 +204,7 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         num_buildings = truth_image.max()
 
         true_pos = list()
-        jaccard = JaccardIndex(task='binary')
+        jaccard = JaccardIndex(task='binary').to(device = self.predictor.device)
 
         image_size = 2048 * 2048
         shape = (num_buildings, image_size)
@@ -223,12 +223,12 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         '''
         h, w = truth_image.shape
         num_matches = 0
-        reordered_truth_masks = torch.from_numpy(np.zeros(shape=(len(masks), h, w)))
+        reordered_truth_masks = torch.from_numpy(np.zeros(shape=(len(masks), h, w))).to(device = self.predictor.device)
         # Reordered masks will be used to put building/prediction matches at the same row, in order to calculate loss all at once
 
         for i in range(num_buildings + 1):
           building_mask = np.where(truth_image==i, 1, 0)
-          building_mask_tensor = torch.from_numpy(building_mask)
+          building_mask_tensor = torch.from_numpy(building_mask).to(device = self.predictor.device)
           arr = np.nonzero(building_mask)
 
           # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
