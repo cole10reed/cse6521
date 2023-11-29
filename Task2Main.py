@@ -339,7 +339,7 @@ def main(
           'num_epochs: ', num_epochs, '\n')
     
     print('number of devices available: ', torch.cuda.device_count())
-    for i in torch.cuda.device_count():
+    for i in range(torch.cuda.device_count()):
         print('device ', i, ': ', torch.cuda.device(i))
     
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = device)
