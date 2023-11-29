@@ -77,6 +77,8 @@ def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarra
 
         # this iterator, which is the same as the original, has 16 iterations. Feel free to cut it after a certain number of iterations if it takes to long
         for (points,) in batch_iterator(model.points_per_batch, points_for_image):
+            if (j > 8):
+                break
             print("Beginning batch run for batch: ", j)
             # print(points)
             IoU_avg, loss, nMasks = model._process_batch_and_do_grad_desc(truth_image, loss_func, optimizer, points, cropped_im_size, crop_boxes[0], orig_size)
@@ -84,7 +86,7 @@ def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarra
             print('*** Loss ', loss)
             print('**** nMasks for this batch: ', nMasks)
             
-            if (j % 5 == 0):
+            if (j % 4 == 0):
                 fpath = tuned_model_folder + f"/model_{i}{j}.pth"
                 print("Saving model to path: ", fpath)
                 torch.save(sam.state_dict(), fpath)

@@ -159,8 +159,8 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         masks, iou_preds, _ =  self.predictor.predict_torch(
             in_points[:, None, :],
             in_labels[:, None],
-            # multimask_output=False,
-            multimask_output=True,
+            multimask_output=False,
+            # multimask_output=True,
             return_logits=True,
          )
         print('Orig masks grad_fn:', masks.grad_fn)
@@ -230,6 +230,10 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
           building_mask = np.where(truth_image==i, 1, 0)
           building_mask_tensor = torch.from_numpy(building_mask).to(device = self.predictor.device)
           arr = np.nonzero(building_mask)
+
+          if(arr[0].size == 0 or arr[1].size == 0):
+              print('*** SKIPPING MASK FOR BUILDING ', i, ' AS TRUTH MASKS ARE EMPTY AND WILL CAUSE FAILURE OF MIN/MAX FUNCTION***')
+              continue
 
           # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
           # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
