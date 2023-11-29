@@ -39,27 +39,11 @@ def show_anns(anns):
     ax.imshow(img)
 
 
-
-def train_step(classifier, image, label, optimizer, loss_func):
-    # print(f'train_step Image type: {type(image)}')
-    
-    predicted = classifier(image)
-    difference = predicted - label
-    # print(f'Predicted: {predicted}')
-    # print(f'Label: {label}')
-    # print(f'Difference: {difference}')
-    loss = loss_func(predicted, torch.Tensor([label]))
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    return predicted, difference.item()
-
-
 def main(
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
          gpu_device = 'cuda',
           model_type = 'vit_h',
-           dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
+           dataset_loc = 'Datasets/Urban_3D_Challenge/02-Provisional_Test/'
         ):
     # input_image = cv2.imread(dataset_loc + r'Inputs/JAX_Tile_052_RGB.tif')
     # print('Image type =', type(input_image))
@@ -73,6 +57,7 @@ def main(
 
     classifier = ImageClassifier()
     classifier.load_state_dict(torch.load('image_classifier/tuned_1.pth'))
+    classifier.eval()
 
     jaccard = JaccardIndex(task='binary')  # This performs the IoU calculation.
     optimizer = torch.optim.Adam(classifier.parameters())
@@ -94,12 +79,15 @@ def main(
 
     sum_iou = 0
     sum_error = 0
-    correct_preds = 0
-    incorrect_preds = 0
+    correct_bldg = 0
+    incorrect_bldg = 0
+    correct_background = 0
+    incorrect_background = 0
     
     true_pos = list()
         
     for k in range(len(input_list)):
+        print("Testing on image:", input_list[k])
         input_image = cv2.imread(input_list[k])
         truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
 
@@ -160,11 +148,16 @@ def main(
                     true_pos.append(i)
                     sum_iou = sum_iou + res
                     bldg = cv2.resize(input_image[y:y+h, x:x+w], resize_dim)
+                    # plt.figure(figsize=(20,20))
+                    # plt.imshow(bldg)
+                    # plt.show()
                     bldg = torch.from_numpy(bldg).float().transpose(1,2).transpose(0,1)
                     
-                    # Train the image classifier with a true building mask (label=1).
                     
-                    pred, err = train_step(classifier=classifier, image=bldg, label=10, optimizer=optimizer, loss_func=loss_func)
+                    # Train the image classifier with a true building mask (label=1).
+                    with torch.no_grad():
+                        pred = classifier(bldg)
+                    err = pred - 10
                     sum_error += err
 
                     
@@ -174,10 +167,10 @@ def main(
                     
                     if pred.item() >= 5:
                         masks[j]['Found'] = True
-                        correct_preds += 1
+                        correct_bldg += 1
                     else:
                         masks[j]['Found'] = False
-                        incorrect_preds += 1
+                        incorrect_bldg += 1
                     # del(masks[j])
                     break
 
@@ -190,19 +183,20 @@ def main(
             bldg = cv2.resize(input_image[y:y+h, x:x+w], resize_dim)
             bldg = torch.from_numpy(bldg).float().transpose(1,2).transpose(0,1)
                     
-            pred, err = train_step(classifier=classifier, image=bldg, label=0, optimizer=optimizer, loss_func=loss_func)
+            with torch.no_grad():
+                pred = classifier(bldg)
+            err = pred
             sum_error += err
-            
             print(f'Predicted: {pred}')
             print(f'Label: 0')
             print(f'Difference: {err}')
 
             if pred.item() < 5:
                 masks[i]['Found'] = True
-                correct_preds += 1
+                correct_background += 1
             else:
                 masks[i]['Found'] = False
-                incorrect_preds += 1
+                incorrect_background += 1
             # loss = loss_func(predictions, labels)
             # optimizer.zero_grad()
             # loss.backward()
@@ -210,9 +204,11 @@ def main(
     print('Total Error:', sum_error)
     print('Num masks:', num_masks)
     print('True Positives:', len(true_pos))
-    print('Correct Preds:', correct_preds)
-    print('Incorrect Preds:', incorrect_preds)
-    torch.save(classifier.state_dict(), f"image_classifier/tuned_2.pth")
+    print('Correct Bldgs:', correct_bldg)
+    print('Incorrect Bldgs:', incorrect_bldg)
+    print('Correct Background:', correct_background)
+    print('Incorrect Background:', incorrect_background)
+    # torch.save(classifier.state_dict(), f"image_classifier/tuned_1.pth")
         
 
     

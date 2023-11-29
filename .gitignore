@@ -3,3 +3,4 @@ Segment-Anything/checkpoints/*
 read_tif.py
 tuned_models/*
 image_classifier/*
+Datasets.zip
