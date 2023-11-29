@@ -365,6 +365,7 @@ def main(
     optimizer = torch.optim.Adam(sam.mask_decoder.parameters())
     loss_func = torch.nn.MSELoss().to(device = device)
 
+
     if tune_model:
         for j in range(num_epochs):
             for k in range(len(input_list)):
@@ -384,7 +385,7 @@ def main(
         print('**SUCCESSFULLY TUNED MODEL**')
 
     #step 2: compare tuned to base. for now, compare last model
-    if(tune_model):
+    if(tune_model and model_dic):
         last_tuned_model_path = model_dic.pop['fpath']
     else:
         last_tuned_model_path = 'tuned_models/model_4.pth' # default to some path
@@ -427,7 +428,7 @@ def main(
 
 if __name__ == '__main__':
     #set values of paramters if they exist in command line args else default. sys.argv[0] is name of program
-    device = sys.argv[1] if len(sys.argv) > 1 else 'cuda'
+    device = sys.argv[1] if len(sys.argv) > 1 else 'cpu'
     tune_model = sys.argv[2] if len(sys.argv) > 2 else False
     sam_checkpoint = sys.argv[3] if len(sys.argv) > 3 else 'Segment-Anything/checkpoints/sam_vit_h_4b8939.pth'
     model_type = sys.argv[4] if len(sys.argv) > 4 else 'vit_h'
