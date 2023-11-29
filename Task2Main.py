@@ -422,4 +422,11 @@ def main(
     
 
 if __name__ == '__main__':
-    main(dataset_loc='Datasets/Urban_3D_Challenge/01-Provisional_Train/')
+    #set values of paramters if they exist in command line args else default. sys.argv[0] is name of program
+    device = sys.argv[1] if len(sys.argv) > 1 else 'cuda'
+    tune_model = sys.argv[2] if len(sys.argv) > 2 else False
+    sam_checkpoint = sys.argv[3] if len(sys.argv) > 3 else 'Segment-Anything/checkpoints/sam_vit_h_4b8939.pth'
+    model_type = sys.argv[4] if len(sys.argv) > 4 else 'vit_h'
+    dataset_loc = sys.argv[5] if len(sys.argv) > 5 else 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
+    num_epochs = sys.argv[6] if len(sys.argv) > 6 else 5
+    main(device, tune_model, sam_checkpoint, model_type, dataset_loc, num_epochs)
