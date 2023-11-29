@@ -440,6 +440,6 @@ if __name__ == '__main__':
     sam_checkpoint = sys.argv[3] if len(sys.argv) > 3 else 'Segment-Anything/checkpoints/sam_vit_h_4b8939.pth'
     model_type = sys.argv[4] if len(sys.argv) > 4 else 'vit_h'
     dataset_loc = sys.argv[5] if len(sys.argv) > 5 else 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
-    num_epochs = sys.argv[6] if len(sys.argv) > 6 else 5
+    num_epochs = int(sys.argv[6]) if len(sys.argv) > 6 else 5
     tuned_model_folder = sys.argv[7] if len(sys.argv) > 7 else 'tuned_models'
     main(device, tune_model, sam_checkpoint, model_type, dataset_loc, num_epochs, tuned_model_folder)
