@@ -343,9 +343,9 @@ def main(
     for i in range(torch.cuda.device_count()):
         print('device ', i, ': ', torch.cuda.device(i))
     
-    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = device)
-
-    sam = DataParallel(sam, [0,1]).module
+    sam = sam_model_registry[model_type](checkpoint=sam_checkpoint)
+    sam = DataParallel(sam, [0,1]).to(device = device)
+    sam = sam.module
 
     ## task 2: first tune models. Then compare tuned to base
 
@@ -392,8 +392,9 @@ def main(
         last_tuned_model_path = model_dic.pop['fpath']
     else:
         last_tuned_model_path = 'tuned_models/model_4.pth' # default to some path
-    sam_tuned = sam_model_registry[model_type](checkpoint=last_tuned_model_path).to(device = device)
-    sam_tuned = DataParallel(sam_tuned, [0,1]).module
+    sam_tuned = sam_model_registry[model_type](checkpoint=last_tuned_model_path)
+    sam_tuned = DataParallel(sam_tuned, [0,1]).to(device = device)
+    sam_tuned = sam_tuned.module
     compare_tuned_to_base(sam, sam_tuned, device = device)
 
     #store params
