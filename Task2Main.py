@@ -328,7 +328,8 @@ def main(
         sam_checkpoint ='Segment-Anything/checkpoints/sam_vit_h_4b8939.pth',
         model_type = 'vit_h',
         dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
-        num_epochs = 5
+        num_epochs = 5,
+        tuned_model_folder = 'tuned_models'
            ):
 
     print('Started Task2 Main with input args: \n', 
@@ -337,7 +338,9 @@ def main(
           'sam_checkpoint: ', sam_checkpoint, '\n',
           'model_type: ', model_type, '\n',
           'dataset_loc: ', dataset_loc, '\n',
-          'num_epochs: ', num_epochs, '\n')
+          'num_epochs: ', num_epochs, '\n',
+          'tuned_model_folder: ', tuned_model_folder
+          )
     
     print('number of devices available: ', torch.cuda.device_count())
     for i in range(torch.cuda.device_count()):
@@ -381,7 +384,7 @@ def main(
                 print('Image:', input_list[k])
                 print('Iteration:', j)
 
-                model_dic = fine_tune(sam, model_in_training, input_image, truth_image, optimizer, loss_func, 1)
+                model_dic = fine_tune(sam, model_in_training, input_image, truth_image, optimizer, loss_func, 1, tuned_model_folder)
                 print(f'Image{k}: {input_list[k]} is complete.')
             print(f'***COMPLETED ITERATION {j}***')
 
@@ -438,4 +441,5 @@ if __name__ == '__main__':
     model_type = sys.argv[4] if len(sys.argv) > 4 else 'vit_h'
     dataset_loc = sys.argv[5] if len(sys.argv) > 5 else 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
     num_epochs = sys.argv[6] if len(sys.argv) > 6 else 5
-    main(device, tune_model, sam_checkpoint, model_type, dataset_loc, num_epochs)
+    tuned_model_folder = sys.argv[7] if len(sys.argv) > 7 else 'tuned_models'
+    main(device, tune_model, sam_checkpoint, model_type, dataset_loc, num_epochs, tuned_model_folder)

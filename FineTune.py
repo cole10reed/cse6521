@@ -33,7 +33,7 @@ from segment_anything.modeling import Sam
 from typing import Any, Dict, List, Optional, Tuple
 from amgWithGrad import AutomaticMaskGenerator_WithGrad
 
-def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarray, truth_image: np.ndarray, optimizer, loss_func, num_epochs = 1):
+def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarray, truth_image: np.ndarray, optimizer, loss_func, num_epochs = 1, tuned_model_folder = 'tuned_models'):
 
     model_tuning_dict = []
     for i in range(num_epochs):
@@ -85,9 +85,9 @@ def fine_tune(sam: Sam, model: AutomaticMaskGenerator_WithGrad, image: np.ndarra
             print('**** nMasks for this batch: ', nMasks)
             
             if (j % 5 == 0):
-                fpath = f"tuned_models/model_{j}.pth"
+                fpath = tuned_model_folder + f"/model_{i}{j}.pth"
                 print("Saving model to path: ", fpath)
-                torch.save(sam.state_dict(), f"tuned_models/model_{j}.pth")
+                torch.save(sam.state_dict(), fpath)
                 model_dic = {'IoU_avg':IoU_avg, 'loss': loss, 'nMasks': nMasks, 'fpath': fpath}
                 model_tuning_dict.append(model_dic)
             
