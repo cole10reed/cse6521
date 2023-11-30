@@ -6,9 +6,9 @@ import numpy as np
 
 dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/'
 
-input_shape = (3, 128, 128)
+input_shape = (3, 32, 32)
 classifier = ImageClassifier()
-curr_anns = []
+'''curr_anns = []
 for i in range(10):
     ann = {
         'info1': i,
@@ -24,9 +24,9 @@ print(curr_anns[2]['state'])
 for i in range(5):
     if ('state' in curr_anns[i].keys()):
         print('found', i)
-
-# summary(classifier, input_shape)
-input = torch.randn((3, 128, 128))
+'''
+summary(classifier, input_shape)
+input = torch.randn(input_shape)
 pred = classifier(input)
 print(pred)
 print(type(pred))

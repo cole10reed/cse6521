@@ -56,7 +56,7 @@ def main(
     mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=32)
 
     classifier = ImageClassifier()
-    classifier.load_state_dict(torch.load('image_classifier/tuned_1.pth'))
+    # classifier.load_state_dict(torch.load('image_classifier/tuned_2.pth'))
     classifier.eval()
 
     jaccard = JaccardIndex(task='binary')  # This performs the IoU calculation.
@@ -64,7 +64,7 @@ def main(
     loss_func = torch.nn.MSELoss()
     
     # resize = transforms.Compose([transforms.Resize(size=(128, 128))])
-    resize_dim = (128, 128)
+    resize_dim = (64, 64)# (128, 128)
 
     input_images = utils.get_input_files(dataset_loc)
     truth_images = utils.get_truth_files(dataset_loc)

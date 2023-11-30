@@ -72,14 +72,14 @@ def main(
     mask_generator = SamAutomaticMaskGenerator(sam, points_per_side=32)
 
     classifier = ImageClassifier()
-    classifier.load_state_dict(torch.load('image_classifier/tuned_1.pth'))
+    # classifier.load_state_dict(torch.load('image_classifier/tuned_2.pth'))
 
     jaccard = JaccardIndex(task='binary')  # This performs the IoU calculation.
     optimizer = torch.optim.Adam(classifier.parameters())
     loss_func = torch.nn.MSELoss()
     
     # resize = transforms.Compose([transforms.Resize(size=(128, 128))])
-    resize_dim = (128, 128)
+    resize_dim = (64, 64) # (128, 128)
 
     input_images = utils.get_input_files(dataset_loc)
     truth_images = utils.get_truth_files(dataset_loc)
@@ -160,6 +160,9 @@ def main(
                     true_pos.append(i)
                     sum_iou = sum_iou + res
                     bldg = cv2.resize(input_image[y:y+h, x:x+w], resize_dim)
+                    # plt.figure(figsize=(20,20))
+                    # plt.imshow(bldg)
+                    # plt.show()
                     bldg = torch.from_numpy(bldg).float().transpose(1,2).transpose(0,1)
                     
                     # Train the image classifier with a true building mask (label=1).
@@ -182,10 +185,14 @@ def main(
                     break
 
             # Now all masks that were matched have been deleted.
+        num_to_train = len(true_pos) # Only train on the same number of backgrounds as there were building masks
         for i in range(len(masks)):
             # Train on remaining masks that are not buildings (label=0).
             if ('Found' in masks[i].keys()):
                 continue
+            if (num_to_train <= 0):
+                break
+            num_to_train = num_to_train - 1
             x,y,h,w = masks[i]['bbox']
             bldg = cv2.resize(input_image[y:y+h, x:x+w], resize_dim)
             bldg = torch.from_numpy(bldg).float().transpose(1,2).transpose(0,1)
@@ -212,7 +219,7 @@ def main(
     print('True Positives:', len(true_pos))
     print('Correct Preds:', correct_preds)
     print('Incorrect Preds:', incorrect_preds)
-    torch.save(classifier.state_dict(), f"image_classifier/tuned_2.pth")
+    torch.save(classifier.state_dict(), f"image_classifier/tuned_3b.pth")
         
 
     
