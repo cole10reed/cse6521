@@ -151,6 +151,8 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         orig_h, orig_w = orig_size
 
         print(' ** Making predicted masks **')
+        print("*** Self.predictor.device: ", self.predictor.device)
+
 
         # Run model on this batch
         transformed_points = self.predictor.transform.apply_coords(points, im_size)
@@ -290,6 +292,9 @@ class AutomaticMaskGenerator_WithGrad(SamAutomaticMaskGenerator):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        IoU_avg = sum_iou/len(true_pos)
+        if(len(true_pos) > 0):
+            IoU_avg = sum_iou/len(true_pos)
+        else:
+            IoU_avg = 0
 
         return IoU_avg, loss.item(), len(masks)

@@ -169,10 +169,14 @@ def model_test(masks, truth_image, device = 'cpu'):
         building_mask_2 = building_mask.flatten()
         # all_truth_masks[i - 1] = building_mask_2 # append building mask to all truth mask
         # np.concatenate(all_truth_mask, building_mask)
-        building_mask_tensor = torch.from_numpy(building_mask, device = device)
+        building_mask_tensor = torch.from_numpy(building_mask).to(device = device)
 
         arr = np.nonzero(building_mask)
         # print(f'Building {i}')
+
+        if(arr[0].size == 0 or arr[1].size == 0):
+           continue
+
         
         # Building bbox is as follows (least x value, greatest x val, least y value, greatest y val)
         # Forms a box with four corners (bx1,by1), (bx1, by2), (bx2, by1), (bx2, by2)
@@ -198,7 +202,7 @@ def model_test(masks, truth_image, device = 'cpu'):
                 ncontinue += 1
                 continue
             
-            segment = torch.from_numpy(masks[j]['segmentation'])
+            segment = torch.from_numpy(masks[j]['segmentation']).to(device = device)
             segment_num = masks[j]['segmentation'].flatten()
             res = jaccard(building_mask_tensor, segment)
 
@@ -224,10 +228,10 @@ def model_test(masks, truth_image, device = 'cpu'):
     elapsed_time = end-start
     elapsed_for_loop_time = end - timeforloopstart
     print('elapsed for loop: ', elapsed_for_loop_time)
-    print('Number of true positives:', len(true_pos))
-    print('Number of false negatives:', num_buildings-len(true_pos))
+    # print('Number of true positives:', len(true_pos))
+    # print('Number of false negatives:', num_buildings-len(true_pos))
     print('Execution time:', elapsed_time, 'seconds')
-    print('total number of masks created by model: ', len(masks))
+    # print('total number of masks created by model: ', len(masks))
     # print('Number of breaks', nbreaks)
     # print('Number of continues', ncontinue)
     return sum_iou, len(true_pos) #, all_truth_masks, all_pred_masks
@@ -280,6 +284,7 @@ def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
     
     ## start looping over all images and test each model
     image_results_dic = dict()
+    print('Beggining loop to compare masks for each model on all images')
     for k in range(len(input_list)):
 
         jaccard = JaccardIndex(task='binary', num_classes = 2).to(device = device)
@@ -314,10 +319,26 @@ def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
 
         print('Completing comparison of base model with tuned model at path: ' , tuned_checkpoint)
         print('**** IoU Comparison ****')
-        print('Avg IoU for base model: ' , sum_iou/nTruePos)
-        print('Avg IoU for tuned model: ', sum_iou_tuned/nTruePos_tuned)
+        IoU_avg = 0
+        IoU_avg_tuned = 0
+        if(nTruePos > 0):
+           IoU_avg = sum_iou/nTruePos
+        else:
+           print(' **** nTruePos = 0 for base model **** ')
 
-        print('***** End comparison *****')
+        if(nTruePos_tuned > 0):
+           IoU_avg_tuned = sum_iou_tuned/nTruePos_tuned
+        else:
+          print(' **** nTruePos_tuned = 0 for tuned model **** ')
+
+      
+        print('Avg IoU for base model: ' , IoU_avg)
+        print('Avg IoU for tuned model: ', IoU_avg_tuned)
+        print('Number of true positives for base model:', nTruePos)
+        print('Number of true positives for tuned model:', nTruePos_tuned)
+
+
+        print('***** End comparison for image ', k, ' *******')
         #### compare masks on image k
 
 
@@ -372,7 +393,7 @@ def main(
     loss_func = torch.nn.MSELoss().to(device = device)
 
 
-    if tune_model:
+    if tune_model == 'True':
         for j in range(num_epochs):
             for k in range(len(input_list)):
                 input_image = cv2.imread(input_list[k])
@@ -389,16 +410,19 @@ def main(
             print(f'***COMPLETED ITERATION {j}***')
 
         print('**SUCCESSFULLY TUNED MODEL**')
+    else:
+        print('*** SKIPPING FINE TUNNING ***')
 
     #step 2: compare tuned to base. for now, compare last model
-    if(tune_model and model_dic):
+    if(tune_model == 'True' and model_dic.size > 0):
         last_tuned_model_path = model_dic.pop['fpath']
     else:
-        last_tuned_model_path = 'tuned_models/model_4.pth' # default to some path
+        last_tuned_model_path = tuned_model_folder + '/model_00.pth' # default to some path
     sam_tuned = sam_model_registry[model_type](checkpoint=last_tuned_model_path)
     sam_tuned = DataParallel(sam_tuned, [0,1]).to(device = device)
     sam_tuned = sam_tuned.module
-    compare_tuned_to_base(sam, sam_tuned, device = device)
+    print('comparing tuned model located at: ', last_tuned_model_path, ' with base model located at: ', sam_checkpoint) 
+    compare_tuned_to_base(sam, sam_tuned, device = device, dataset_loc = dataset_loc, tuned_checkpoint = last_tuned_model_path)
 
     #store params
     paramdic_base = {}
