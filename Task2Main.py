@@ -362,7 +362,17 @@ def main(
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = device)
     sam = DataParallel(sam, [0,1])
     sam = sam.module
-    sam.train()
+    for param in sam.image_encoder.paramters():
+        param.requires_grad = False
+    for param in sam.mask_encoder.paramters():
+        param.requires_grad = False
+    for param in sam.prompt_encoder.paramters():
+        param.requires_grad = False
+
+    sam.mask_decoder.output_upscaling.requires_grad_(True)
+    sam.mask_decoder.output_hypernetworks_mlps.requires_grad_(True)
+    sam.mask_decoder.iou_prediction_head.requires_grad_(True)
+    
 
     ## task 2: first tune models. Then compare tuned to base
     # get list of all input and truth images in the specified directory
