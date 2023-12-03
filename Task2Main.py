@@ -362,11 +362,11 @@ def main(
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = device)
     sam = DataParallel(sam, [0,1])
     sam = sam.module
-    for param in sam.image_encoder.paramters():
+    for param in sam.image_encoder.parameters():
         param.requires_grad = False
-    for param in sam.mask_encoder.paramters():
+    for param in sam.mask_decoder.parameters():
         param.requires_grad = False
-    for param in sam.prompt_encoder.paramters():
+    for param in sam.prompt_encoder.parameters():
         param.requires_grad = False
 
     sam.mask_decoder.output_upscaling.requires_grad_(True)
@@ -411,7 +411,7 @@ def main(
                 print('Iteration:', j)
 
                 model_dic = fine_tune(sam, model_in_training, input_image, truth_image, optimizer, loss_func, 1, tuned_model_folder)
-                print(f'Image{image_number}: {str(input_paths[image_number])} is complete.')
+                print('Image ', image_number, 'is complete')
                 image_number += 1
             print(f'***COMPLETED ITERATION {j}***')
 
