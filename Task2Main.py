@@ -238,6 +238,8 @@ def model_test(masks, truth_image, device = 'cpu'):
 
 def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
          device = 'cpu',
+         input_images = list(),
+         truth_images = list(),
           model_type = 'vit_h',
            dataset_loc = 'Datasets/Urban_3D_Challenge/01-Provisional_Train/',
            tuned_checkpoint = 'tuned_models/model_4.pth'):
@@ -267,32 +269,21 @@ def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
     # compare the results
     #move to osc
 
-    print('Fetching Datasets from location ', dataset_loc)
-
-    input_list = list()
-    truth_list = list()
-
-    input_images = utils.get_input_files(dataset_loc)
-    truth_images = utils.get_truth_files(dataset_loc)
-
-    for i in input_images:
-        input_list.append(str(i))
-        print(str(i))
-    for i in truth_images:
-        truth_list.append(str(i))
-
     
     ## start looping over all images and test each model
     image_results_dic = dict()
     print('Beggining loop to compare masks for each model on all images')
-    for k in range(len(input_list)):
+    image_number = 0
+    for input_image, truth_image in zip(input_images, truth_images):
 
         jaccard = JaccardIndex(task='binary', num_classes = 2).to(device = device)
         print('----------------------')
 
-        print('**** Reading in image ', k, 'out of image ', len(input_list) )
-        input_image = cv2.imread(input_list[k])
-        truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
+        print('**** Reading in image ', image_number, 'out of image ', len(input_images) )
+        # input_image = cv2.imread(input_list[k])
+        # input_image = utils.resize_image(input_image, 50)
+        # truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
+        # truth_image = utils.resize_image(truth_image, 50)
         masks_tuned = mask_generator_tuned.generate(input_image)
         masks = mask_generator.generate(input_image)
         print(' *********** Generated Masks *************** ' )
@@ -338,7 +329,8 @@ def compare_tuned_to_base(sam: Sam, sam_tuned: Sam,
         print('Number of true positives for tuned model:', nTruePos_tuned)
 
 
-        print('***** End comparison for image ', k, ' *******')
+        print('***** End comparison for image ', image_number, ' *******')
+        image_number += 1
         #### compare masks on image k
 
 
@@ -370,19 +362,24 @@ def main(
     sam = sam_model_registry[model_type](checkpoint=sam_checkpoint).to(device = device)
     sam = DataParallel(sam, [0,1])
     sam = sam.module
+    sam.train()
 
     ## task 2: first tune models. Then compare tuned to base
-
     # get list of all input and truth images in the specified directory
-    input_images = utils.get_input_files(dataset_loc)
-    truth_images = utils.get_truth_files(dataset_loc)
+    input_paths = utils.get_input_files(dataset_loc)
+    truth_paths = utils.get_truth_files(dataset_loc)
 
-    input_list = list()
-    truth_list = list()
-    for i in input_images:
-        input_list.append(str(i))
-    for i in truth_images:
-        truth_list.append(str(i))
+    input_images = list()
+    truth_images = list()
+
+    for input_path, truth_path in zip(input_paths, truth_paths):
+        input_image = cv2.imread(str(input_path))
+        truth_image = utils.get_truth_image(str(truth_path), 2048, 2048)
+        input_image = utils.resize_image(input_image, 50)
+        truth_image = utils.resize_image(truth_image, 50)
+        input_images.append(input_image)
+        truth_images.append(truth_image)
+    #convert list to images
 
     points_per_side = 32
 
@@ -395,18 +392,17 @@ def main(
 
     if tune_model == 'True':
         for j in range(num_epochs):
-            for k in range(len(input_list)):
-                input_image = cv2.imread(input_list[k])
-                # print(image)
-                truth_image = utils.get_truth_image(truth_list[k], 2048, 2048)
-                
+            image_number = 0
+            for input_image, truth_image in zip(input_images, truth_images):
+            
                 # *** FINE TUNING DONE HERE ***
                 print('*** Beginning fine tuning for model ', model_type, 'at checkpoint ', sam_checkpoint)
-                print('Image:', input_list[k])
+                print('Image:', image_number)
                 print('Iteration:', j)
 
                 model_dic = fine_tune(sam, model_in_training, input_image, truth_image, optimizer, loss_func, 1, tuned_model_folder)
-                print(f'Image{k}: {input_list[k]} is complete.')
+                print(f'Image{image_number}: {str(input_paths[image_number])} is complete.')
+                image_number += 1
             print(f'***COMPLETED ITERATION {j}***')
 
         print('**SUCCESSFULLY TUNED MODEL**')
@@ -422,7 +418,7 @@ def main(
     sam_tuned = DataParallel(sam_tuned, [0,1])
     sam_tuned = sam_tuned.module
     print('comparing tuned model located at: ', last_tuned_model_path, ' with base model located at: ', sam_checkpoint) 
-    compare_tuned_to_base(sam, sam_tuned, device = device, dataset_loc = dataset_loc, tuned_checkpoint = last_tuned_model_path)
+    compare_tuned_to_base(sam, sam_tuned, device, input_images, truth_images, tuned_checkpoint = last_tuned_model_path)
 
     #store params
     paramdic_base = {}
